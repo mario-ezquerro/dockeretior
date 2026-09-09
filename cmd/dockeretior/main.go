@@ -10,6 +10,7 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/creack/pty"
@@ -18,8 +19,66 @@ import (
 	"golang.org/x/term"
 )
 
-// Trigger sequence for Ctrl + Alt/Option + Space: ESC (\x1b) followed by NUL (\x00)
-var triggerSequence = []byte{0x1b, 0x00}
+// Supported hotkey trigger sequences
+var (
+	// Ctrl + Alt/Option + Space variations (ESC + NUL, ESC + Space, ESC + NBSP)
+	seqCtrlAltSpace1 = []byte{0x1b, 0x00}
+	seqCtrlAltSpace2 = []byte{0x1b, 0x20}
+	seqCtrlAltSpace3 = []byte{0x1b, 0xc2, 0xa0}
+
+	// Ctrl + Space (ASCII NUL)
+	seqCtrlSpace = []byte{0x00}
+
+	// Ctrl + \ (ASCII FS 0x1c - Universal Unix/macOS escape key)
+	seqCtrlBackslash = []byte{0x1c}
+
+	// Ctrl + ] (ASCII GS 0x1d)
+	seqCtrlBracket = []byte{0x1d}
+
+	// F12 key escape sequences across various terminal emulators
+	seqF12Standard = []byte{0x1b, '[', '2', '4', '~'}
+	seqF12VT       = []byte{0x1b, '[', '1', '1', '~'}
+	seqF12SS3      = []byte{0x1b, 'O', 'S'}
+)
+
+func isTriggerSequence(b []byte) bool {
+	if len(b) == 0 {
+		return false
+	}
+
+	// Ctrl + \ (Universal & recommended for macOS)
+	if bytes.Equal(b, seqCtrlBackslash) {
+		return true
+	}
+
+	// Ctrl + Space
+	if bytes.Equal(b, seqCtrlSpace) {
+		return true
+	}
+
+	// Ctrl + ]
+	if bytes.Equal(b, seqCtrlBracket) {
+		return true
+	}
+
+	// Ctrl + Alt + Space sequences
+	if len(b) >= 2 && bytes.Equal(b[:2], seqCtrlAltSpace1) {
+		return true
+	}
+	if len(b) >= 2 && bytes.Equal(b[:2], seqCtrlAltSpace2) {
+		return true
+	}
+	if len(b) >= 3 && bytes.Equal(b[:3], seqCtrlAltSpace3) {
+		return true
+	}
+
+	// F12 sequences
+	if bytes.Equal(b, seqF12Standard) || bytes.Equal(b, seqF12VT) || bytes.Equal(b, seqF12SS3) {
+		return true
+	}
+
+	return false
+}
 
 type Supervisor struct {
 	ptmx       *os.File
@@ -32,7 +91,8 @@ type Supervisor struct {
 }
 
 func main() {
-	onlyTUI := flag.Bool("tui", false, "Lanza directamente la interfaz TUI sin el proxy PTY")
+	onlyTUI := flag.Bool("tui", false, "Lanza directamente la interfaz TUI a pantalla completa")
+	debugKeys := flag.Bool("debug-keys", false, "Modo diagnóstico: muestra los bytes exactos enviados por el teclado")
 	versionFlag := flag.Bool("version", false, "Muestra la versión de dockeretior")
 	flag.Parse()
 
@@ -41,9 +101,15 @@ func main() {
 		return
 	}
 
+	// Modo diagnóstico de teclas para terminales
+	if *debugKeys {
+		runDebugKeys()
+		return
+	}
+
 	dockerCli, err := docker.NewClient()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Aviso: No se pudo conectar al socket Docker (%v). La TUI funcionará en modo degradado.\n", err)
+		fmt.Fprintf(os.Stderr, "⚠️  Aviso: Docker socket no detectado (%v). Ejecutando en modo desconectado.\n", err)
 	}
 	defer func() {
 		if dockerCli != nil {
@@ -51,7 +117,7 @@ func main() {
 		}
 	}()
 
-	// Modo TUI directo si se pide explícitamente
+	// Modo TUI directo si se solicita con --tui
 	if *onlyTUI {
 		p := tea.NewProgram(tui.NewApp(dockerCli), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
@@ -61,7 +127,7 @@ func main() {
 		return
 	}
 
-	// Iniciar PTY proxy transparente
+	// Supervisor PTY
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/bash"
@@ -75,7 +141,7 @@ func main() {
 	}
 	defer ptmx.Close()
 
-	// Sincronizar tamaño del terminal dinámicamente con SIGWINCH
+	// Mantener tamaño del terminal sincronizado (SIGWINCH)
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGWINCH)
 	go func() {
@@ -85,10 +151,10 @@ func main() {
 	}()
 	sigChan <- syscall.SIGWINCH
 
-	// Poner el terminal del host en modo RAW
+	// Poner stdin del host en modo RAW
 	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error estableciendo modo raw en terminal: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error configurando modo raw en terminal: %v\n", err)
 		os.Exit(1)
 	}
 	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
@@ -98,7 +164,11 @@ func main() {
 		dockerCli: dockerCli,
 	}
 
-	// Goroutine 1: Salida de la Shell -> Consola real (solo cuando la TUI no está activa)
+	// Mensaje inicial discreto
+	welcomeBanner := "\r\n\x1b[38;5;99m⚓ Dockeretior Supervisor activo\x1b[0m \x1b[90m(Atajos de activación: [Ctrl+\\] o [Ctrl+Alt+Espacio] o [Ctrl+Space])\x1b[0m\r\n"
+	os.Stdout.WriteString(welcomeBanner)
+
+	// Hilo 1: Salida de la Shell -> Consola (solo cuando la TUI está oculta)
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -114,7 +184,7 @@ func main() {
 		}
 	}()
 
-	// Goroutine 2: Entrada del Teclado -> Detección de Hot-Toggle o Shell
+	// Hilo 2: Entrada del Teclado -> Hot-Toggle o Shell
 	inputBuf := make([]byte, 256)
 	for {
 		n, err := os.Stdin.Read(inputBuf)
@@ -122,20 +192,17 @@ func main() {
 			break
 		}
 
-		// Detectar Ctrl + Alt/Option + Espacio (\x1b\x00)
-		if n >= 2 && bytes.Equal(inputBuf[:2], triggerSequence) {
+		if isTriggerSequence(inputBuf[:n]) {
 			sup.toggle()
 			continue
 		}
 
 		sup.mu.Lock()
 		if sup.inMenu {
-			// Redirigir pulsaciones a la TUI de Bubble Tea
 			if sup.tuiStdinW != nil {
 				_, _ = sup.tuiStdinW.Write(inputBuf[:n])
 			}
 		} else {
-			// Redirigir pulsaciones a la Shell habitual
 			_, _ = ptmx.Write(inputBuf[:n])
 		}
 		sup.mu.Unlock()
@@ -149,8 +216,9 @@ func (s *Supervisor) toggle() {
 	defer s.mu.Unlock()
 
 	if !s.inMenu {
-		// Activar TUI y cambiar al buffer de pantalla alternativo
 		s.inMenu = true
+
+		// Cambiar al buffer de pantalla alternativo ANSI
 		os.Stdout.WriteString("\x1b[?1049h\x1b[H")
 
 		s.tuiStdinR, s.tuiStdinW = io.Pipe()
@@ -159,6 +227,14 @@ func (s *Supervisor) toggle() {
 			tea.WithInput(s.tuiStdinR),
 			tea.WithOutput(os.Stdout),
 		)
+
+		// Enviar dimensiones iniciales del terminal para renderizado perfecto
+		if w, h, err := term.GetSize(int(os.Stdout.Fd())); err == nil {
+			go func() {
+				time.Sleep(20 * time.Millisecond)
+				s.tuiProgram.Send(tea.WindowSizeMsg{Width: w, Height: h})
+			}()
+		}
 
 		go func(p *tea.Program) {
 			_, _ = p.Run()
@@ -170,7 +246,6 @@ func (s *Supervisor) toggle() {
 			s.mu.Unlock()
 		}(s.tuiProgram)
 	} else {
-		// Ocultar TUI y volver a la Shell intacta
 		s.inMenu = false
 		if s.tuiProgram != nil {
 			s.tuiProgram.Quit()
@@ -179,5 +254,44 @@ func (s *Supervisor) toggle() {
 			s.tuiStdinW.Close()
 		}
 		os.Stdout.WriteString("\x1b[?1049l")
+	}
+}
+
+func runDebugKeys() {
+	oldState, err := term.MakeRaw(int(os.Stdin.Fd()))
+	if err != nil {
+		fmt.Printf("Error modo raw: %v\n", err)
+		return
+	}
+	defer func() { _ = term.Restore(int(os.Stdin.Fd()), oldState) }()
+
+	fmt.Print("\r\n=== MODO DIAGNÓSTICO DE TECLADO DOCKERETIOR ===\r\n")
+	fmt.Print("Pulsa cualquier tecla o combinación para ver los bytes que recibe el terminal.\r\n")
+	fmt.Print("Pulsa 'Ctrl+C' o 'q' para salir.\r\n\r\n")
+
+	buf := make([]byte, 128)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil {
+			break
+		}
+
+		chunk := buf[:n]
+		if len(chunk) == 1 && (chunk[0] == 0x03 || chunk[0] == 'q') {
+			fmt.Print("\r\nSaliendo del modo diagnóstico...\r\n")
+			break
+		}
+
+		hexStr := ""
+		for _, b := range chunk {
+			hexStr += fmt.Sprintf("0x%02x ", b)
+		}
+
+		matched := "No coincide con trigger"
+		if isTriggerSequence(chunk) {
+			matched = "\x1b[32m¡COINCIDE CON ACTIVACIÓN DOCKERETIOR!\x1b[0m"
+		}
+
+		fmt.Printf("\rBytes: %d | Hex: [ %s] | %s\r\n", n, hexStr, matched)
 	}
 }
