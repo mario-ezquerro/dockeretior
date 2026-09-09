@@ -7,7 +7,7 @@ import (
 	"github.com/mario-ezquerro/dockeretior/internal/compose"
 )
 
-func renderComposeView(files []string, selectedProject *compose.ComposeProject, cursor int, statusMsg string, outputText string) string {
+func renderComposeView(currentDir string, entries []compose.FileEntry, selectedProject *compose.ComposeProject, cursor int, statusMsg string, outputText string) string {
 	if outputText != "" {
 		var s string
 		s += SelectedRowStyle.Render("─── SALIDA DEL COMANDO DOCKER COMPOSE ───") + "\n\n"
@@ -17,36 +17,47 @@ func renderComposeView(files []string, selectedProject *compose.ComposeProject, 
 	}
 
 	var s string
-	s += "Ficheros Docker Compose detectados en el directorio actual:\n\n"
+	s += fmt.Sprintf("%s %s\n\n", DimStyle.Render("📂 Directorio activo:"), SelectedRowStyle.Render(currentDir))
 
-	if len(files) == 0 {
-		s += DimStyle.Render(" No se detectaron archivos docker-compose.yml / compose.yaml en este directorio.\n")
-		s += "\n" + HelpBarStyle.Render("[q / Esc: Volver al menú principal]")
-		return s
+	if len(entries) == 0 {
+		s += DimStyle.Render("  (No se encontraron subcarpetas ni archivos .yml / .yaml en esta ruta)\n")
 	}
 
-	for i, f := range files {
+	for i, entry := range entries {
 		prefix := "  "
-		line := f
+		var line string
+
+		if entry.IsDir {
+			line = fmt.Sprintf("📁 %-35s %s", entry.Name, DimStyle.Render("[Carpeta]"))
+		} else {
+			compTag := DimStyle.Render("(Archivo YAML)")
+			if entry.IsCompose {
+				compTag = StatusRunningStyle.Render(fmt.Sprintf("[%d servicio(s) detectados]", entry.ServiceCount))
+			}
+			line = fmt.Sprintf("📄 %-35s %s", entry.Name, compTag)
+		}
+
 		if cursor == i {
 			prefix = SelectedRowStyle.Render("▶ ")
-			line = SelectedRowStyle.Render(f)
+			line = SelectedRowStyle.Render(line)
 		}
 		s += fmt.Sprintf("%s%s\n", prefix, line)
 	}
 
 	if selectedProject != nil {
 		s += "\n" + DimStyle.Render(strings.Repeat("─", 80)) + "\n"
-		s += HeaderTagStyle.Render(fmt.Sprintf(" Servicios en %s ", selectedProject.FileName)) + "\n\n"
+		s += HeaderTagStyle.Render(fmt.Sprintf(" Proyecto: %s (%s) ", selectedProject.FileName, selectedProject.FilePath)) + "\n\n"
 
 		if len(selectedProject.Services) == 0 {
-			s += DimStyle.Render("  (No se encontraron servicios definidos)\n")
+			s += DimStyle.Render("  (No se encontraron servicios definidos en el YAML)\n")
 		}
 
 		for svcName, svc := range selectedProject.Services {
-			s += fmt.Sprintf("  • %s (Image: %s, Restart: %s)\n",
+			s += fmt.Sprintf("  • %s  %s: %s  %s: %s\n",
 				SelectedRowStyle.Render(svcName),
+				DimStyle.Render("Image"),
 				svc.Image,
+				DimStyle.Render("Restart"),
 				svc.Restart,
 			)
 			if len(svc.Ports) > 0 {
@@ -59,6 +70,6 @@ func renderComposeView(files []string, selectedProject *compose.ComposeProject, 
 		s += "\n" + StatusRunningStyle.Render("⚡ "+statusMsg) + "\n"
 	}
 
-	s += "\n" + HelpBarStyle.Render("[↑/↓: Seleccionar archivo] [Enter: Inspeccionar] [u: Compose Up] [d: Compose Down] [r: Restart] [q: Menú]")
+	s += "\n" + HelpBarStyle.Render("[↑/↓: Mover] [Enter: Entrar/Inspeccionar] [u: Compose Up -d] [d: Down] [r: Restart] [q: Menú]")
 	return s
 }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -20,40 +21,105 @@ type ComposeProject struct {
 
 // Service represents a parsed service definition inside compose.
 type Service struct {
-	Image       string            `yaml:"image"`
-	ContainerName string          `yaml:"container_name"`
-	Ports       []string          `yaml:"ports"`
-	Environment yaml.Node         `yaml:"environment"`
-	Restart     string            `yaml:"restart"`
+	Image         string    `yaml:"image"`
+	ContainerName string    `yaml:"container_name"`
+	Ports         []string  `yaml:"ports"`
+	Environment   yaml.Node `yaml:"environment"`
+	Restart       string    `yaml:"restart"`
 }
 
 type rawCompose struct {
 	Services map[string]Service `yaml:"services"`
 }
 
-// FindComposeFiles looks for compose YAML files in the given directory.
-func FindComposeFiles(dir string) ([]string, error) {
-	patterns := []string{
-		"docker-compose.yml",
-		"docker-compose.yaml",
-		"compose.yml",
-		"compose.yaml",
-		"*compose*.yml",
-		"*compose*.yaml",
-	}
+// FileEntry represents an item in the directory explorer.
+type FileEntry struct {
+	Name        string
+	Path        string
+	IsDir       bool
+	IsCompose   bool
+	ServiceCount int
+}
 
-	foundMap := make(map[string]bool)
-	var results []string
-
-	for _, p := range patterns {
-		matches, err := filepath.Glob(filepath.Join(dir, p))
-		if err == nil {
-			for _, m := range matches {
-				if !foundMap[m] {
-					foundMap[m] = true
-					results = append(results, m)
+// GetProcessCwd discovers the live current working directory of a child process (macOS / Linux).
+func GetProcessCwd(pid int) string {
+	if pid > 0 {
+		if runtime.GOOS == "linux" {
+			if target, err := os.Readlink(fmt.Sprintf("/proc/%d/cwd", pid)); err == nil {
+				return target
+			}
+		}
+		if runtime.GOOS == "darwin" {
+			out, err := exec.Command("lsof", "-a", "-p", fmt.Sprintf("%d", pid), "-d", "cwd", "-Fn").Output()
+			if err == nil {
+				for _, line := range strings.Split(string(out), "\n") {
+					if strings.HasPrefix(line, "n") && len(line) > 1 {
+						return strings.TrimSpace(line[1:])
+					}
 				}
 			}
+		}
+	}
+	cwd, _ := os.Getwd()
+	return cwd
+}
+
+// ScanDirectory lists files, subfolders and any YAML compose files in the target directory.
+func ScanDirectory(dir string) ([]FileEntry, error) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	var results []FileEntry
+
+	// Add parent directory option
+	parentDir := filepath.Dir(dir)
+	if parentDir != dir {
+		results = append(results, FileEntry{
+			Name:  "..",
+			Path:  parentDir,
+			IsDir: true,
+		})
+	}
+
+	// 1. First add subdirectories
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if strings.HasPrefix(entry.Name(), ".") {
+				continue // Skip hidden directories like .git
+			}
+			results = append(results, FileEntry{
+				Name:  entry.Name() + "/",
+				Path:  filepath.Join(dir, entry.Name()),
+				IsDir: true,
+			})
+		}
+	}
+
+	// 2. Add YAML and Compose files
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		ext := strings.ToLower(filepath.Ext(name))
+		if ext == ".yml" || ext == ".yaml" {
+			fullPath := filepath.Join(dir, name)
+			proj, parseErr := ParseComposeFile(fullPath)
+			svcCount := 0
+			isComp := false
+			if parseErr == nil && proj != nil && len(proj.Services) > 0 {
+				isComp = true
+				svcCount = len(proj.Services)
+			}
+			results = append(results, FileEntry{
+				Name:         name,
+				Path:         fullPath,
+				IsDir:        false,
+				IsCompose:    isComp,
+				ServiceCount: svcCount,
+			})
 		}
 	}
 
@@ -85,6 +151,9 @@ func ExecuteCommand(ctx context.Context, composeFile string, args ...string) (st
 	cmdArgs = append(cmdArgs, args...)
 
 	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
+	// Run command inside the compose file directory
+	cmd.Dir = filepath.Dir(composeFile)
+
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return string(out), fmt.Errorf("compose command failed (%v): %s", err, string(out))

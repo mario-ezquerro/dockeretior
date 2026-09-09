@@ -14,6 +14,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/creack/pty"
+	"github.com/mario-ezquerro/dockeretior/internal/compose"
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
 	"github.com/mario-ezquerro/dockeretior/internal/tui"
 	"golang.org/x/term"
@@ -120,7 +121,8 @@ func main() {
 
 	// Modo TUI directo si se solicita con --tui
 	if *onlyTUI {
-		p := tea.NewProgram(tui.NewApp(dockerCli), tea.WithAltScreen())
+		cwd, _ := os.Getwd()
+		p := tea.NewProgram(tui.NewApp(dockerCli, cwd), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
 			fmt.Fprintf(os.Stderr, "Error ejecutando TUI: %v\n", err)
 			os.Exit(1)
@@ -220,12 +222,19 @@ func (s *Supervisor) toggle() {
 	if !s.inMenu {
 		s.inMenu = true
 
+		// Detectar dinámicamente la ruta en la que está el usuario en la shell
+		pid := 0
+		if s.cmd != nil && s.cmd.Process != nil {
+			pid = s.cmd.Process.Pid
+		}
+		currentDir := compose.GetProcessCwd(pid)
+
 		// Cambiar al buffer de pantalla alternativo ANSI
 		os.Stdout.WriteString("\x1b[?1049h\x1b[H")
 
 		s.tuiStdinR, s.tuiStdinW = io.Pipe()
 		s.tuiProgram = tea.NewProgram(
-			tui.NewApp(s.dockerCli),
+			tui.NewApp(s.dockerCli, currentDir),
 			tea.WithInput(s.tuiStdinR),
 			tea.WithOutput(os.Stdout),
 		)

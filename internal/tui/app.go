@@ -32,7 +32,8 @@ type AppModel struct {
 	state              viewState
 	cursor             int
 	containers         []types.Container
-	composeFiles       []string
+	currentDir         string
+	composeEntries     []compose.FileEntry
 	selectedProj       *compose.ComposeProject
 	activeLogName      string
 	activeLogID        string
@@ -53,15 +54,28 @@ func (m AppModel) ShouldExitSupervisor() bool {
 }
 
 // NewApp creates a new AppModel.
-func NewApp(cli *docker.Client) AppModel {
-	cwd, _ := os.Getwd()
-	compFiles, _ := compose.FindComposeFiles(cwd)
+func NewApp(cli *docker.Client, initialDir string) AppModel {
+	if initialDir == "" {
+		initialDir, _ = os.Getwd()
+	}
+
+	entries, _ := compose.ScanDirectory(initialDir)
 
 	m := AppModel{
-		cli:          cli,
-		state:        viewMenu,
-		cursor:       0,
-		composeFiles: compFiles,
+		cli:            cli,
+		state:          viewMenu,
+		cursor:         0,
+		currentDir:     initialDir,
+		composeEntries: entries,
+	}
+
+	// Auto-select first compose file if present in the initial folder
+	for _, e := range entries {
+		if !e.IsDir && e.IsCompose {
+			proj, _ := compose.ParseComposeFile(e.Path)
+			m.selectedProj = proj
+			break
+		}
 	}
 
 	if cli != nil {
@@ -124,7 +138,6 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = ""
 				return m, nil
 			}
-			// En el menú principal, 'q' oculta la TUI y vuelve al shell
 			return m, tea.Quit
 
 		case "up", "k":
@@ -140,7 +153,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case viewContainers:
 				maxIdx = len(m.containers) - 1
 			case viewCompose:
-				maxIdx = len(m.composeFiles) - 1
+				maxIdx = len(m.composeEntries) - 1
 			}
 			if m.cursor < maxIdx {
 				m.cursor++
@@ -154,12 +167,9 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.cursor = 0
 					m.state = viewContainers
 				case 1: // Compose
+					m.refreshComposeEntries()
 					m.cursor = 0
 					m.state = viewCompose
-					if len(m.composeFiles) > 0 {
-						proj, _ := compose.ParseComposeFile(m.composeFiles[0])
-						m.selectedProj = proj
-					}
 				case 2: // Info
 					m.refreshSysInfo()
 					m.state = viewSystemInfo
@@ -169,10 +179,22 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.fullExitRequested = true
 					return m, tea.Quit
 				}
-			} else if m.state == viewCompose && len(m.composeFiles) > 0 && m.cursor < len(m.composeFiles) {
-				proj, err := compose.ParseComposeFile(m.composeFiles[m.cursor])
-				if err == nil {
-					m.selectedProj = proj
+			} else if m.state == viewCompose && len(m.composeEntries) > 0 && m.cursor < len(m.composeEntries) {
+				selected := m.composeEntries[m.cursor]
+				if selected.IsDir {
+					// Navegar dentro de la carpeta
+					m.currentDir = selected.Path
+					m.refreshComposeEntries()
+					m.cursor = 0
+				} else {
+					// Parsear archivo Compose seleccionado
+					proj, err := compose.ParseComposeFile(selected.Path)
+					if err == nil {
+						m.selectedProj = proj
+						m.statusMsg = fmt.Sprintf("Archivo cargado: %s (%d servicios)", selected.Name, len(proj.Services))
+					} else {
+						m.statusMsg = fmt.Sprintf("Error al leer YAML: %v", err)
+					}
 				}
 			}
 
@@ -191,24 +213,28 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = fmt.Sprintf("Contenedor iniciado: %s", target[:min(12, len(target))])
 				m.refreshContainers()
 			}
-		case "r": // Restart
+		case "r": // Restart o Refresh
 			if m.state == viewContainers && len(m.containers) > 0 && m.cursor < len(m.containers) {
 				target := m.containers[m.cursor].ID
 				_ = m.cli.RestartContainer(context.Background(), target)
 				m.statusMsg = fmt.Sprintf("Contenedor reiniciado: %s", target[:min(12, len(target))])
 				m.refreshContainers()
-			} else if m.state == viewCompose && m.selectedProj != nil {
-				out, err := compose.ExecuteCommand(context.Background(), m.selectedProj.FilePath, "restart")
-				if err != nil {
-					m.composeOutput = fmt.Sprintf("Error: %v\n%s", err, out)
+			} else if m.state == viewCompose {
+				if m.selectedProj != nil {
+					out, err := compose.ExecuteCommand(context.Background(), m.selectedProj.FilePath, "restart")
+					if err != nil {
+						m.composeOutput = fmt.Sprintf("Error al reiniciar Compose: %v\n%s", err, out)
+					} else {
+						m.composeOutput = out
+					}
 				} else {
-					m.composeOutput = out
+					m.refreshComposeEntries()
 				}
 			} else if m.state == viewLogs && m.activeLogID != "" {
 				logs, _ := fetchLogs(m.cli, m.activeLogID, "100")
 				m.activeLogText = logs
 			}
-		case "p": // Pause/Unpause
+		case "p": // Pause/Unpause o docker compose ps
 			if m.state == viewContainers && len(m.containers) > 0 && m.cursor < len(m.containers) {
 				target := m.containers[m.cursor]
 				if strings.HasPrefix(strings.ToLower(target.State), "paused") {
@@ -219,6 +245,13 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.statusMsg = fmt.Sprintf("Contenedor pausado: %s", target.ID[:min(12, len(target.ID))])
 				}
 				m.refreshContainers()
+			} else if m.state == viewCompose && m.selectedProj != nil {
+				out, err := compose.ExecuteCommand(context.Background(), m.selectedProj.FilePath, "ps")
+				if err != nil {
+					m.composeOutput = fmt.Sprintf("Error: %v\n%s", err, out)
+				} else {
+					m.composeOutput = out
+				}
 			}
 		case "l": // Logs
 			if m.state == viewContainers && len(m.containers) > 0 && m.cursor < len(m.containers) {
@@ -232,13 +265,27 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				logs, _ := fetchLogs(m.cli, c.ID, "100")
 				m.activeLogText = logs
 				m.state = viewLogs
+			} else if m.state == viewCompose && m.selectedProj != nil {
+				out, err := compose.ExecuteCommand(context.Background(), m.selectedProj.FilePath, "logs", "--tail=50")
+				if err != nil {
+					m.composeOutput = fmt.Sprintf("Error logs: %v\n%s", err, out)
+				} else {
+					m.composeOutput = out
+				}
 			}
-		case "d": // Inspect
+		case "d": // Inspect o Compose Down
 			if m.state == viewContainers && len(m.containers) > 0 && m.cursor < len(m.containers) {
 				target := m.containers[m.cursor].ID
 				data, err := m.cli.InspectContainer(context.Background(), target)
 				if err == nil {
 					m.inspectingJSON = formatInspectJSON(data)
+				}
+			} else if m.state == viewCompose && m.selectedProj != nil {
+				out, err := compose.ExecuteCommand(context.Background(), m.selectedProj.FilePath, "down")
+				if err != nil {
+					m.composeOutput = fmt.Sprintf("Error al detener Compose: %v\n%s", err, out)
+				} else {
+					m.composeOutput = out
 				}
 			}
 
@@ -266,6 +313,13 @@ func (m *AppModel) refreshContainers() {
 	}
 }
 
+func (m *AppModel) refreshComposeEntries() {
+	entries, err := compose.ScanDirectory(m.currentDir)
+	if err == nil {
+		m.composeEntries = entries
+	}
+}
+
 func (m *AppModel) refreshSysInfo() {
 	if m.cli != nil {
 		info, err := m.cli.ServerInfo(context.Background())
@@ -290,7 +344,7 @@ func (m AppModel) View() string {
 	case viewContainers:
 		return header + renderContainersView(m.containers, m.cursor, m.statusMsg, m.inspectingJSON)
 	case viewCompose:
-		return header + renderComposeView(m.composeFiles, m.selectedProj, m.cursor, m.statusMsg, m.composeOutput)
+		return header + renderComposeView(m.currentDir, m.composeEntries, m.selectedProj, m.cursor, m.statusMsg, m.composeOutput)
 	case viewLogs:
 		return header + renderLogsView(m.activeLogName, m.activeLogText)
 	case viewSystemInfo:
