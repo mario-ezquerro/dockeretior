@@ -23,26 +23,33 @@ const (
 	viewLogs
 	viewInspect
 	viewQuit
+	viewFullExit
 )
 
 // AppModel is the root Bubble Tea model.
 type AppModel struct {
-	cli            *docker.Client
-	state          viewState
-	cursor         int
-	containers     []types.Container
-	composeFiles   []string
-	selectedProj   *compose.ComposeProject
-	activeLogName  string
-	activeLogID    string
-	activeLogText  string
-	inspectingJSON string
-	composeOutput  string
-	sysInfo        system.Info
-	statusMsg      string
-	err            error
-	width          int
-	height         int
+	cli                *docker.Client
+	state              viewState
+	cursor             int
+	containers         []types.Container
+	composeFiles       []string
+	selectedProj       *compose.ComposeProject
+	activeLogName      string
+	activeLogID        string
+	activeLogText      string
+	inspectingJSON     string
+	composeOutput      string
+	sysInfo            system.Info
+	statusMsg          string
+	fullExitRequested  bool
+	err                error
+	width              int
+	height             int
+}
+
+// ShouldExitSupervisor returns true if the user requested a full termination of the supervisor.
+func (m AppModel) ShouldExitSupervisor() bool {
+	return m.fullExitRequested
 }
 
 // NewApp creates a new AppModel.
@@ -85,10 +92,17 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyCtrlC:
+			m.fullExitRequested = true
 			return m, tea.Quit
 		}
 
 		key := msg.String()
+
+		// Atajo universal para salir completamente de Dockeretior
+		if key == "ctrl+q" || key == "Q" {
+			m.fullExitRequested = true
+			return m, tea.Quit
+		}
 
 		switch key {
 		case "q", "esc":
@@ -110,6 +124,7 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.statusMsg = ""
 				return m, nil
 			}
+			// En el menú principal, 'q' oculta la TUI y vuelve al shell
 			return m, tea.Quit
 
 		case "up", "k":
@@ -148,7 +163,10 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				case 2: // Info
 					m.refreshSysInfo()
 					m.state = viewSystemInfo
-				case 3: // Salir
+				case 3: // Ocultar TUI y volver al shell
+					return m, tea.Quit
+				case 4: // Salir completamente
+					m.fullExitRequested = true
 					return m, tea.Quit
 				}
 			} else if m.state == viewCompose && len(m.composeFiles) > 0 && m.cursor < len(m.composeFiles) {
@@ -260,10 +278,10 @@ func (m *AppModel) refreshSysInfo() {
 func (m AppModel) View() string {
 	header := HeaderTitleStyle.Render(" DOCKERETIOR ") + " " +
 		HeaderTagStyle.Render(" LATENT SUPERVISOR ") + "  " +
-		DimStyle.Render("Hot-Toggle: [Ctrl + Alt + Espacio]") + "\n\n"
+		DimStyle.Render("Toggle: [Ctrl+\\] | [Cmd+Opt+Espacio]") + "\n\n"
 
 	if m.err != nil {
-		return header + fmt.Sprintf("⚠️  Error conectando con Docker Daemon: %v\n\nPresiona 'q' o [Ctrl+Alt+Espacio] para salir.", m.err)
+		return header + fmt.Sprintf("⚠️  Error conectando con Docker Daemon: %v\n\nPresiona 'q' para volver al shell o 'Q' para salir.", m.err)
 	}
 
 	switch m.state {

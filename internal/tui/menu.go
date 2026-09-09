@@ -27,9 +27,14 @@ var defaultMenuItems = []menuItem{
 		State: viewSystemInfo,
 	},
 	{
-		Title: "4. Volver a la Shell (Ctrl+Alt+Espacio / q)",
-		Desc:  "Oculta la interfaz TUI y regresa a tu sesión de terminal intacta.",
+		Title: "4. Volver a la Shell en 2º plano (q / Esc)",
+		Desc:  "Oculta la TUI y regresa a tu sesión de terminal activa sin cerrarla.",
 		State: viewQuit,
+	},
+	{
+		Title: "5. Finalizar y Salir de Dockeretior (Ctrl+Q / Q)",
+		Desc:  "Detiene el supervisor Dockeretior y regresa a tu terminal original.",
+		State: viewFullExit,
 	},
 }
 
@@ -49,6 +54,6 @@ func renderMenuView(cursor int) string {
 		s += fmt.Sprintf("%s%s\n", cursorStr, itemLine)
 	}
 
-	s += "\n" + HelpBarStyle.Render("[↑/↓ o j/k: Mover]  [Enter: Entrar]  [q o Ctrl+Alt+Espacio: Volver a la Shell]")
+	s += "\n" + HelpBarStyle.Render("[↑/↓: Mover] [Enter: Seleccionar] [q: Ocultar TUI] [Ctrl+Q o Q: Salir del programa]")
 	return s
 }

@@ -88,6 +88,7 @@ type Supervisor struct {
 	tuiStdinR  *io.PipeReader
 	tuiStdinW  *io.PipeWriter
 	dockerCli  *docker.Client
+	cmd        *exec.Cmd
 }
 
 func main() {
@@ -162,13 +163,14 @@ func main() {
 	sup := &Supervisor{
 		ptmx:      ptmx,
 		dockerCli: dockerCli,
+		cmd:       cmd,
 	}
 
 	// Mensaje inicial discreto
-	welcomeBanner := "\r\n\x1b[38;5;99m⚓ Dockeretior Supervisor activo\x1b[0m \x1b[90m(Atajos de activación: [Ctrl+\\] o [Ctrl+Alt+Espacio] o [Ctrl+Space])\x1b[0m\r\n"
+	welcomeBanner := "\r\n\x1b[38;5;99m⚓ Dockeretior Supervisor activo\x1b[0m \x1b[90m(Toggle: [Ctrl+\\] o [Cmd+Opt+Espacio] | Salir: 'exit' o Ctrl+Q en TUI)\x1b[0m\r\n"
 	os.Stdout.WriteString(welcomeBanner)
 
-	// Hilo 1: Salida de la Shell -> Consola (solo cuando la TUI está oculta)
+	// Hilo 1: Salida de la Shell -> Consola (solo cuando la TUI no está activa)
 	go func() {
 		buf := make([]byte, 4096)
 		for {
@@ -237,11 +239,22 @@ func (s *Supervisor) toggle() {
 		}
 
 		go func(p *tea.Program) {
-			_, _ = p.Run()
+			finalModel, _ := p.Run()
 			s.mu.Lock()
 			if s.inMenu {
 				s.inMenu = false
 				os.Stdout.WriteString("\x1b[?1049l")
+			}
+
+			// Si el usuario seleccionó "Salir completamente" (opción 5 o Ctrl+Q / Q)
+			if appModel, ok := finalModel.(tui.AppModel); ok && appModel.ShouldExitSupervisor() {
+				s.mu.Unlock()
+				_ = s.ptmx.Close()
+				if s.cmd != nil && s.cmd.Process != nil {
+					_ = s.cmd.Process.Kill()
+				}
+				os.Stdout.WriteString("\r\n\x1b[32m✔ Dockeretior finalizado con éxito.\x1b[0m\r\n")
+				os.Exit(0)
 			}
 			s.mu.Unlock()
 		}(s.tuiProgram)
