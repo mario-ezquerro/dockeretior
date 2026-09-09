@@ -1,0 +1,75 @@
+name: Release & CI
+
+on:
+  push:
+    branches: [ main ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache: true
+
+      - name: Install Dependencies
+        run: go mod tidy
+
+      - name: Vet & Test
+        run: |
+          go vet ./...
+          go test -v ./...
+
+      - name: Build Binaries
+        run: make build
+
+  release:
+    name: Create GitHub Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Cross-Compile Multi-Arch Binaries
+        run: |
+          mkdir -p dist
+          # Linux AMD64
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/dockeretior-linux-amd64 ./cmd/dockeretior
+          # Linux ARM64
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/dockeretior-linux-arm64 ./cmd/dockeretior
+          # macOS Intel
+          GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o dist/dockeretior-darwin-amd64 ./cmd/dockeretior
+          # macOS Apple Silicon (M1/M2/M3/M4)
+          GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o dist/dockeretior-darwin-arm64 ./cmd/dockeretior
+
+          cd dist
+          tar -czvf dockeretior-linux-amd64.tar.gz dockeretior-linux-amd64
+          tar -czvf dockeretior-linux-arm64.tar.gz dockeretior-linux-arm64
+          tar -czvf dockeretior-darwin-amd64.tar.gz dockeretior-darwin-amd64
+          tar -czvf dockeretior-darwin-arm64.tar.gz dockeretior-darwin-arm64
+          sha256sum *.tar.gz > SHA256SUMS.txt
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          generate_release_notes: true

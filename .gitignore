@@ -1,0 +1,17 @@
+# Binaries and build artifacts
+/bin/
+/dockeretior
+*.exe
+*.test
+*.out
+
+# Dependencies and vendor
+vendor/
+
+# OS and IDE files
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
