@@ -7,6 +7,8 @@ canonical_url: https://github.com/mario-ezquerro/dockeretior
 cover_image: https://raw.githubusercontent.com/mario-ezquerro/dockeretior/main/assets/banner.png
 ---
 
+![Dockeretior - The Proactive Docker TUI & AutoDoctor #BuiltWithAntigravity](https://raw.githubusercontent.com/mario-ezquerro/dockeretior/main/assets/banner.png)
+
 ## 😫 The 2:00 AM SSH Nightmare
 
 Every sysadmin, DevOps engineer, and backend developer knows this drill by heart:

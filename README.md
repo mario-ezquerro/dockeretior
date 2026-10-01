@@ -7,7 +7,13 @@
 [![Go Version](https://img.shields.io/github/go-mod/go-version/mario-ezquerro/dockeretior)](go.mod)
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS-informational.svg)](https://github.com/mario-ezquerro/dockeretior)
 
-**Supervisor interactivo y residente de pseudo-terminal (PTY) para Docker y Docker Compose con activación en caliente (*Hot-Toggle*).**
+<br/>
+
+<img src="assets/banner.png" alt="Dockeretior #BuiltWithAntigravity Banner" width="100%" />
+
+<br/>
+
+**Supervisor interactivo y residente de pseudo-terminal (PTY) para Docker y Docker Compose con diagnóstico inteligente AutoDoctor.**
 
 [Características](#-características) • [Instalación](#-instalación) • [Uso y Atajos](#-uso-y-atajos) • [Integración SSH](#-integración-permanente-por-ssh) • [Licencia](#-licencia)
 
