@@ -131,6 +131,8 @@ func RenderHelpModal(width int) string {
 		fmt.Sprintf(" %-14s : %s", kStyle.Render("F8 / x / 8"), "Borrar contenedor (confirmar o forzar con f)"),
 		fmt.Sprintf(" %-14s : %s", kStyle.Render("F9 / i / 9"), "Inspeccionar configuración JSON"),
 		fmt.Sprintf(" %-14s : %s", kStyle.Render("F10 / q / 0"), "Salir de Dockeretior"),
+		fmt.Sprintf(" %-14s : %s", kStyle.Render("a / A"), "🩺 AutoDoctor: Diagnóstico inteligente y salud"),
+		fmt.Sprintf(" %-14s : %s", kStyle.Render("c / C"), "Docker Compose / Limpiar espacio en AutoDoctor"),
 		fmt.Sprintf(" %-14s : %s", kStyle.Render("↑ / ↓ o k / j"), "Navegar por la lista de contenedores"),
 		"",
 		DimStyle.Render("Pulsa [Esc] o [F1] para volver al panel."),

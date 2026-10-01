@@ -35,7 +35,7 @@ func TestDimensionsFit(t *testing.T) {
 	}
 
 	for _, sz := range testSizes {
-		out := renderContainersDashboard(containers, 0, nil, true, "", false, false, sz.w, sz.h)
+		out := renderContainersDashboard(containers, 0, nil, nil, true, "", false, false, sz.w, sz.h)
 		lines := strings.Split(out, "\n")
 
 		for i, line := range lines {
@@ -47,6 +47,19 @@ func TestDimensionsFit(t *testing.T) {
 
 		if len(lines) > sz.h+1 {
 			t.Errorf("[%dx%d] Total lines %d exceeds height %d!", sz.w, sz.h, len(lines), sz.h)
+		}
+
+		// Also verify AutoDoctor view fits dimensions perfectly
+		docOut := renderAutoDoctorView(nil, false, "Test status", sz.w, sz.h)
+		docLines := strings.Split(docOut, "\n")
+		for i, line := range docLines {
+			visWidth := runewidth.StringWidth(stripANSI(line))
+			if visWidth > sz.w {
+				t.Errorf("[AutoDoctor %dx%d] Line %d exceeds width %d! visWidth=%d: %q", sz.w, sz.h, i, sz.w, visWidth, line)
+			}
+		}
+		if len(docLines) > sz.h+1 {
+			t.Errorf("[AutoDoctor %dx%d] Total lines %d exceeds height %d!", sz.w, sz.h, len(docLines), sz.h)
 		}
 	}
 }

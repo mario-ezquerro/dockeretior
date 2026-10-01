@@ -29,8 +29,13 @@ Al terminar o volver a pulsar la combinación, la pantalla vuelve de forma **100
 
 ---
 
-## ✨ Características
-
+- 🩺 **AutoDoctor (Diagnóstico Inteligente del Servidor):**
+  - **Health Score (0 - 100):** Indicador de salud global (`🟢 Excelente`, `🟡 Precaución`, `🔴 Crítico`) en la cabecera del panel.
+  - **Diagnóstico de Causa Raíz:** En lugar de solo mostrar errores, AutoDoctor cruza exit codes, inspección de contenedores, cgroups de memoria (Exit 137 OOM Killer), scripts faltantes (Exit 126/127), bucles continuos de reinicio y healthchecks fallidos.
+  - **Auditoría de Almacenamiento:** Detecta espacio ocupado en imágenes dangling, volúmenes huérfanos y caché de construcción, permitiendo liberarlo con 1 tecla (<kbd>c</kbd>).
+  - **Auditoría de Seguridad Rápida:** Detecta contenedores en modo privilegiado (`--privileged`), sockets montados (`/var/run/docker.sock`) y puertos de bases de datos sensibles (Postgres, MySQL, Redis, MongoDB) expuestos públicamente en `0.0.0.0`.
+  - **Top 3 Acciones Prioritarias:** Responde a la pregunta clave: *"¿Cuáles son los problemas que debo atender primero y exactamente cómo solucionarlos?"*.
+  - **Modo CLI Rápido (`--doctor`):** Ejecutable directamente en scripts o terminal remota sin abrir la interfaz interactiva.
 - 🖥️ **Panel Interactivo por Defecto:** Al ejecutar `dockeretior` en tu shell (local o por **SSH**), se despliega de inmediato el dashboard con todos los contenedores en ejecución.
 - 📐 **Diseño en Pantalla Dividida (*Split View*):**
   - **Margen Izquierdo:** Tabla interactiva de contenedores con indicadores de estado en color, nombres, imágenes, puertos e IDs.
@@ -68,8 +73,9 @@ Al terminar o volver a pulsar la combinación, la pantalla vuelve de forma **100
 | <kbd>F8</kbd> | <kbd>x</kbd> o <kbd>8</kbd> | **Borrar:** Eliminar contenedor (con confirmación `y` o forzar con `f`) |
 | <kbd>F9</kbd> | <kbd>i</kbd> o <kbd>9</kbd> | **Inspect:** Inspeccionar configuración completa en JSON |
 | <kbd>F10</kbd> | <kbd>q</kbd> o <kbd>0</kbd> o <kbd>Esc</kbd> | **Salir:** Cerrar Dockeretior y regresar al bash / SSH |
+| <kbd>a</kbd> / <kbd>A</kbd> | | **AutoDoctor:** Diagnóstico de salud, causas raíz y recomendaciones |
+| <kbd>c</kbd> | | **Compose / Limpiar:** Compose en panel principal o Limpieza de espacio en AutoDoctor |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | <kbd>k</kbd> / <kbd>j</kbd> | **Navegación:** Desplazar cursor sobre los contenedores y actualizar ventanas |
-| <kbd>c</kbd> | | **Compose:** Explorar proyectos Docker Compose en el directorio actual |
 
 ---
 
@@ -115,9 +121,16 @@ Simplemente escribe en tu terminal o sesión SSH:
 dockeretior
 ```
 
-Se abrirá inmediatamente la pantalla dividida (*split view*) mostrando todos los contenedores en ejecución en el margen izquierdo y las 4 ventanas ASCII con las cargas de CPU, memoria, red y resto de usos en el margen derecho, con la botonera de funciones F1 - F10 en la parte inferior.
+Se abrirá inmediatamente la pantalla dividida (*split view*) mostrando todos los contenedores en ejecución en el margen izquierdo y las 4 ventanas ASCII con las cargas de CPU, memoria, red y resto de usos en el margen derecho, con la botonera de funciones F1 - F10 en la parte inferior. Puedes pulsar <kbd>a</kbd> en cualquier momento para abrir **AutoDoctor** y revisar la salud del servidor.
 
-### 2. Modo Supervisor Latente en Segundo Plano (*Hot-Toggle*)
+### 2. AutoDoctor en Línea de Comandos (`--doctor`)
+Para obtener un diagnóstico instantáneo de fallos, causas raíz y recomendaciones sin entrar a la TUI interactiva (ideal para scripts, alertas o inspección rápida por SSH):
+
+```bash
+dockeretior --doctor
+```
+
+### 3. Modo Supervisor Latente en Segundo Plano (*Hot-Toggle*)
 Si deseas que Dockeretior permanezca invisible en segundo plano dentro de tu shell y se active únicamente al pulsar la combinación de teclas (`Ctrl+\` o `Ctrl+Alt+Espacio`):
 
 ```bash

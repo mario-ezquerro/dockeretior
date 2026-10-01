@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -14,6 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/creack/pty"
+	"github.com/mario-ezquerro/dockeretior/internal/autodoctor"
 	"github.com/mario-ezquerro/dockeretior/internal/compose"
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
 	"github.com/mario-ezquerro/dockeretior/internal/tui"
@@ -97,11 +99,12 @@ func main() {
 	flag.BoolVar(supervisorFlag, "s", false, "Alias de --supervisor")
 	_ = flag.Bool("tui", true, "Lanza directamente la interfaz TUI (activo por defecto)")
 	debugKeys := flag.Bool("debug-keys", false, "Modo diagnóstico: muestra los bytes exactos enviados por el teclado")
+	doctorFlag := flag.Bool("doctor", false, "Ejecuta AutoDoctor y muestra el informe de salud del servidor en consola")
 	versionFlag := flag.Bool("version", false, "Muestra la versión de dockeretior")
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("dockeretior v1.1.0 (Interactive Docker Dashboard & Supervisor)")
+		fmt.Println("dockeretior v1.2.0 (Interactive Docker Dashboard, AutoDoctor & Supervisor)")
 		return
 	}
 
@@ -120,6 +123,21 @@ func main() {
 			_ = dockerCli.Close()
 		}
 	}()
+
+	// Modo AutoDoctor directo en CLI (sin entrar en TUI interactiva)
+	if *doctorFlag {
+		if dockerCli == nil {
+			fmt.Println("❌ Error: No se puede conectar al socket de Docker.")
+			os.Exit(1)
+		}
+		rep, err := autodoctor.RunAudit(context.Background(), dockerCli)
+		if err != nil {
+			fmt.Printf("❌ Error ejecutando diagnóstico: %v\n", err)
+			os.Exit(1)
+		}
+		printDoctorCLIReport(rep)
+		return
+	}
 
 	// Por defecto, ejecuta la interfaz TUI interactiva a pantalla completa
 	if !*supervisorFlag {
@@ -319,3 +337,52 @@ func runDebugKeys() {
 		fmt.Printf("\rBytes: %d | Hex: [ %s] | %s\r\n", n, hexStr, matched)
 	}
 }
+
+func printDoctorCLIReport(rep *autodoctor.HealthReport) {
+	fmt.Println("================================================================================")
+	fmt.Printf("🩺 AUTODOCTOR - INFORME DE SALUD DEL SERVIDOR\n")
+	fmt.Println("================================================================================")
+	fmt.Printf("Salud Global : %d/100 %s %s\n", rep.HealthScore, rep.HealthBadge, rep.HealthLabel)
+	fmt.Printf("Contenedores : %d en ejecución, %d detenidos (%d en total)\n", rep.ContainersRunning, rep.ContainersStopped, rep.ContainersTotal)
+	fmt.Printf("Generado     : %s\n", rep.GeneratedAt.Format("2006-01-02 15:04:05"))
+	fmt.Println("--------------------------------------------------------------------------------")
+	fmt.Println("ESTADO DE SUBSISTEMAS:")
+	for _, sub := range rep.Subsystems {
+		icon := "🟢"
+		if sub.Status == autodoctor.SeverityCritical {
+			icon = "🔴"
+		} else if sub.Status == autodoctor.SeverityWarning {
+			icon = "🟡"
+		}
+		fmt.Printf("  %s %-15s : %s\n", icon, sub.Name, sub.Summary)
+	}
+	fmt.Println("--------------------------------------------------------------------------------")
+	fmt.Println("ACCIONES PRIORITARIAS RECOMENDADAS (TOP 3):")
+	if len(rep.TopActions) == 0 {
+		fmt.Println("  🎉 ¡Sin problemas detectados! El entorno Docker funciona de forma óptima.")
+	} else {
+		for i, act := range rep.TopActions {
+			badge := "🔴 CRÍTICO"
+			if act.Severity == autodoctor.SeverityWarning {
+				badge = "🟡 ALERTA"
+			} else if act.Severity == autodoctor.SeverityInfo {
+				badge = "ℹ️ INFO"
+			}
+			fmt.Printf("  %d. [%s] %s (%s)\n", i+1, badge, act.Title, act.Target)
+			fmt.Printf("     ↳ Por qué : %s\n", act.RootCause)
+			fmt.Printf("     ↳ Solución: %s\n", act.Recommendation)
+			if act.RemediationCommand != "" {
+				fmt.Printf("     ↳ Comando : %s\n", act.RemediationCommand)
+			}
+		}
+	}
+	if rep.Storage.TotalReclaimableBytes > 0 {
+		fmt.Println("--------------------------------------------------------------------------------")
+		fmt.Printf("💡 ESPACIO RECUPERABLE: %s acumulados en imágenes sin usar y caché de Docker.\n",
+			docker.FormatBytes(uint64(rep.Storage.TotalReclaimableBytes)))
+		fmt.Printf("   Para liberar espacio ejecuta: dockeretior (pulsa 'a' y luego 'c')\n")
+		fmt.Printf("   o por consola: docker system prune -a --volumes\n")
+	}
+	fmt.Println("================================================================================")
+}
+

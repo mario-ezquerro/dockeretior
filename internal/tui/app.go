@@ -11,6 +11,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/system"
+	"github.com/mario-ezquerro/dockeretior/internal/autodoctor"
 	"github.com/mario-ezquerro/dockeretior/internal/compose"
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
 	"golang.org/x/term"
@@ -24,6 +25,7 @@ const (
 	viewSystemInfo
 	viewLogs
 	viewInspect
+	viewAutoDoctor
 )
 
 type tickMsg time.Time
@@ -44,6 +46,16 @@ type execFinishedMsg struct {
 	err           error
 }
 
+type auditFinishedMsg struct {
+	report *autodoctor.HealthReport
+	err    error
+}
+
+type pruneFinishedMsg struct {
+	freedBytes uint64
+	err        error
+}
+
 // AppModel is the root Bubble Tea model.
 type AppModel struct {
 	cli                *docker.Client
@@ -52,6 +64,8 @@ type AppModel struct {
 	containers         []types.Container
 	filterRunningOnly  bool
 	currentMetrics     *docker.ContainerMetrics
+	healthReport       *autodoctor.HealthReport
+	isAuditing         bool
 	currentDir         string
 	composeEntries     []compose.FileEntry
 	selectedProj       *compose.ComposeProject
@@ -142,13 +156,33 @@ func NewApp(cli *docker.Client, initialDir string) AppModel {
 }
 
 func (m AppModel) Init() tea.Cmd {
-	return tea.Batch(m.tickCmd(), m.fetchSelectedMetricsCmd())
+	return tea.Batch(m.tickCmd(), m.fetchSelectedMetricsCmd(), m.runAuditCmd())
 }
 
 func (m AppModel) tickCmd() tea.Cmd {
 	return tea.Tick(1500*time.Millisecond, func(t time.Time) tea.Msg {
 		return tickMsg(t)
 	})
+}
+
+func (m AppModel) runAuditCmd() tea.Cmd {
+	if m.cli == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		rep, err := autodoctor.RunAudit(context.Background(), m.cli)
+		return auditFinishedMsg{report: rep, err: err}
+	}
+}
+
+func (m AppModel) runPruneCmd() tea.Cmd {
+	if m.cli == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		freed, err := m.cli.PruneUnused(context.Background())
+		return pruneFinishedMsg{freedBytes: freed, err: err}
+	}
 }
 
 func (m AppModel) fetchSelectedMetricsCmd() tea.Cmd {
@@ -172,6 +206,22 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		return m, nil
+
+	case auditFinishedMsg:
+		m.isAuditing = false
+		if msg.err == nil && msg.report != nil {
+			m.healthReport = msg.report
+		}
+		return m, nil
+
+	case pruneFinishedMsg:
+		if msg.err != nil {
+			m.statusMsg = fmt.Sprintf("Error liberando espacio: %v", msg.err)
+		} else {
+			m.statusMsg = fmt.Sprintf("✔ Espacio liberado con éxito: %s.", docker.FormatBytes(msg.freedBytes))
+		}
+		m.isAuditing = true
+		return m, m.runAuditCmd()
 
 	case tickMsg:
 		var cmd tea.Cmd
@@ -351,6 +401,23 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
+		if m.state == viewAutoDoctor {
+			if key == "q" || key == "esc" || key == "a" {
+				m.state = viewContainers
+				return m, nil
+			}
+			if key == "r" || key == "f5" {
+				m.isAuditing = true
+				m.statusMsg = "⚡ Analizando salud del servidor..."
+				return m, m.runAuditCmd()
+			}
+			if key == "c" {
+				m.statusMsg = "⚡ Limpiando imágenes sin usar y caché de construcción..."
+				return m, m.runPruneCmd()
+			}
+			return m, nil
+		}
+
 		// --- MAIN CONTAINERS DASHBOARD KEY HANDLERS ---
 
 		// [F1] Ayuda
@@ -518,6 +585,16 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 
+		// [a] AutoDoctor
+		if key == "a" {
+			m.state = viewAutoDoctor
+			if m.healthReport == nil && !m.isAuditing {
+				m.isAuditing = true
+				return m, m.runAuditCmd()
+			}
+			return m, nil
+		}
+
 		// Docker Compose view
 		if key == "c" {
 			m.refreshComposeEntries()
@@ -573,6 +650,7 @@ func (m AppModel) View() string {
 			m.containers,
 			m.cursor,
 			m.currentMetrics,
+			m.healthReport,
 			m.filterRunningOnly,
 			m.statusMsg,
 			m.confirmDelete,
@@ -588,6 +666,8 @@ func (m AppModel) View() string {
 		return renderComposeView(m.currentDir, m.composeEntries, m.selectedProj, m.cursor, m.statusMsg, m.composeOutput)
 	case viewSystemInfo:
 		return renderSystemInfoView(m.sysInfo)
+	case viewAutoDoctor:
+		return renderAutoDoctorView(m.healthReport, m.isAuditing, m.statusMsg, m.width, m.height)
 	}
 
 	return ""

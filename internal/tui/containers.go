@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/docker/docker/api/types"
+	"github.com/mario-ezquerro/dockeretior/internal/autodoctor"
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
 	"github.com/mattn/go-runewidth"
 )
@@ -16,6 +17,7 @@ func renderContainersDashboard(
 	containers []types.Container,
 	cursor int,
 	currentMetrics *docker.ContainerMetrics,
+	healthReport *autodoctor.HealthReport,
 	filterRunningOnly bool,
 	statusMsg string,
 	confirmDelete bool,
@@ -67,7 +69,13 @@ func renderContainersDashboard(
 	if !filterRunningOnly {
 		countStr = fmt.Sprintf("%d activos, %d detenidos", runningCount, stoppedCount)
 	}
-	headerRight := DimStyle.Render(countStr) + " "
+
+	healthBadge := ""
+	if healthReport != nil {
+		healthBadge = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render(fmt.Sprintf("🩺 %s %d/100 [a:AutoDoctor] ", healthReport.HealthBadge, healthReport.HealthScore))
+	}
+
+	headerRight := healthBadge + DimStyle.Render(countStr) + " "
 
 	headerLine := headerLeft + headerRight
 	pad := width - runewidth.StringWidth(stripANSI(headerLeft)) - runewidth.StringWidth(stripANSI(headerRight))

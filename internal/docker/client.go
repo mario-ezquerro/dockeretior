@@ -12,6 +12,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/system"
 	"github.com/docker/docker/client"
 )
@@ -145,6 +146,25 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail string) (
 // ServerInfo returns system information from the Docker daemon.
 func (c *Client) ServerInfo(ctx context.Context) (system.Info, error) {
 	return c.cli.Info(ctx)
+}
+
+// DiskUsage returns Docker data usage (images, containers, volumes, build cache).
+func (c *Client) DiskUsage(ctx context.Context) (types.DiskUsage, error) {
+	return c.cli.DiskUsage(ctx, types.DiskUsageOptions{})
+}
+
+// PruneUnused removes dangling images and unused build cache, returning freed bytes.
+func (c *Client) PruneUnused(ctx context.Context) (uint64, error) {
+	var totalFreed uint64
+	imgReport, err := c.cli.ImagesPrune(ctx, filters.NewArgs())
+	if err == nil {
+		totalFreed += imgReport.SpaceReclaimed
+	}
+	cacheReport, err := c.cli.BuildCachePrune(ctx, types.BuildCachePruneOptions{})
+	if err == nil {
+		totalFreed += cacheReport.SpaceReclaimed
+	}
+	return totalFreed, nil
 }
 
 // Close closes the underlying docker client transport.
