@@ -78,7 +78,8 @@ func renderContainersDashboard(
 
 	// If Help Modal is open
 	if showHelp {
-		return headerLine + "\n\n" + RenderHelpModal(width) + "\n\n" + RenderBottomBar(filterRunningOnly, isRunning(containers, cursor), isPaused(containers, cursor), width)
+		modal := RenderHelpModal(width)
+		return headerLine + "\n\n" + modal + "\n\n" + RenderBottomBar(filterRunningOnly, isRunning(containers, cursor), isPaused(containers, cursor), width)
 	}
 
 	// If Delete Confirmation is active
@@ -89,35 +90,43 @@ func renderContainersDashboard(
 		return headerLine + "\n\n" + deleteModal + "\n\n" + RenderBottomBar(filterRunningOnly, isRunning(containers, cursor), isPaused(containers, cursor), width)
 	}
 
-	// 2. Right Pane: 4 ASCII Windows
-	rightPaneRaw := RenderRightPane(currentMetrics, rightWidth, height)
+	// Calculate vertical budget
+	overhead := 2 // 1 line header + 1 line bottom bar
+	if statusMsg != "" {
+		overhead = 3 // + 1 line status
+	}
+	availLines := height - overhead
+	if availLines < 16 {
+		availLines = 16
+	}
+
+	// 2. Right Pane: 4 ASCII Windows filling availLines exactly
+	rightPaneRaw := RenderRightPane(currentMetrics, rightWidth, availLines)
 	rightLines := strings.Split(rightPaneRaw, "\n")
 	for i, rl := range rightLines {
 		rightLines[i] = padOrTruncate(rl, rightWidth)
 	}
 
-	// 3. Left Pane: Table of Containers
-	maxTableRows := len(rightLines) - 2
-	if maxTableRows < 4 {
-		maxTableRows = 4
-	}
-	leftLines := renderContainersTableLines(containers, cursor, leftWidth, maxTableRows)
+	// 3. Left Pane: Table of Containers filling availLines exactly
+	leftLines := renderContainersTableLines(containers, cursor, leftWidth, availLines)
 
-	// Equalize line count between left and right panes
-	targetLines := len(rightLines)
-	if len(leftLines) > targetLines {
-		targetLines = len(leftLines)
-	}
-	for len(leftLines) < targetLines {
+	// Equalize lines to availLines
+	for len(leftLines) < availLines {
 		leftLines = append(leftLines, strings.Repeat(" ", leftWidth))
 	}
-	for len(rightLines) < targetLines {
+	if len(leftLines) > availLines {
+		leftLines = leftLines[:availLines]
+	}
+	for len(rightLines) < availLines {
 		rightLines = append(rightLines, strings.Repeat(" ", rightWidth))
 	}
+	if len(rightLines) > availLines {
+		rightLines = rightLines[:availLines]
+	}
 
-	// 4. Combine Left and Right Panes line-by-line with exact spacing
+	// 4. Combine Left and Right Panes line-by-line
 	var splitLines []string
-	for i := 0; i < targetLines; i++ {
+	for i := 0; i < availLines; i++ {
 		combined := leftLines[i] + "  " + rightLines[i]
 		splitLines = append(splitLines, padOrTruncate(combined, width))
 	}
@@ -137,7 +146,7 @@ func renderContainersDashboard(
 	return headerLine + "\n" + splitView + "\n" + statusLine + bottomBar
 }
 
-func renderContainersTableLines(containers []types.Container, cursor int, width int, maxRows int) []string {
+func renderContainersTableLines(containers []types.Container, cursor int, width int, targetLines int) []string {
 	var lines []string
 
 	// Column widths
@@ -168,7 +177,16 @@ func renderContainersTableLines(containers []types.Container, cursor int, width 
 	if len(containers) == 0 {
 		lines = append(lines, padOrTruncate("  "+DimStyle.Render("No hay contenedores en ejecución."), width))
 		lines = append(lines, padOrTruncate("  "+DimStyle.Render("Pulsa [F2] para ver todos."), width))
+		for len(lines) < targetLines {
+			lines = append(lines, strings.Repeat(" ", width))
+		}
 		return lines
+	}
+
+	// Visible table row capacity
+	maxRows := targetLines - 2
+	if maxRows < 1 {
+		maxRows = 1
 	}
 
 	startIdx := 0
@@ -241,6 +259,11 @@ func renderContainersTableLines(containers []types.Container, cursor int, width 
 		}
 	}
 
+	// Pad with empty rows to fill targetLines exactly
+	for len(lines) < targetLines {
+		lines = append(lines, strings.Repeat(" ", width))
+	}
+
 	return lines
 }
 
@@ -310,8 +333,8 @@ func formatInspectJSON(data types.ContainerJSON) string {
 	return string(b)
 }
 
-func renderInspectView(jsonText string, width int) string {
+func renderInspectView(jsonText string, width int, height int) string {
 	lines := strings.Split(jsonText, "\n")
-	return DrawASCIIBox("INSPECCIÓN DETALLADA DEL CONTENEDOR (JSON)", lines, width, lipgloss.Color("#38BDF8"), PrimaryColor) +
+	return DrawASCIIBox("INSPECCIÓN DETALLADA DEL CONTENEDOR (JSON)", lines, width, height-3, lipgloss.Color("#38BDF8"), PrimaryColor) +
 		"\n\n" + HelpBarStyle.Render("[Esc / q: Volver a la lista de contenedores]")
 }

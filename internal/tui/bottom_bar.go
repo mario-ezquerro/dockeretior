@@ -110,7 +110,7 @@ func RenderDeleteConfirmModal(containerName, containerID string, width int) stri
 		" [n / Esc]   Cancelar",
 	}
 
-	return DrawASCIIBox("ELIMINAR CONTENEDOR", lines, width, lipgloss.Color("#EF4444"), lipgloss.Color("#EF4444"))
+	return DrawASCIIBox("ELIMINAR CONTENEDOR", lines, width, 0, lipgloss.Color("#EF4444"), lipgloss.Color("#EF4444"))
 }
 
 // RenderHelpModal generates the F1 overlay modal with keyboard shortcuts and functions.
@@ -144,5 +144,5 @@ func RenderHelpModal(width int) string {
 		boxWidth = 46
 	}
 
-	return DrawASCIIBox("AYUDA Y ATAJOS", lines, boxWidth, lipgloss.Color("#38BDF8"), lipgloss.Color("#6366F1"))
+	return DrawASCIIBox("AYUDA Y ATAJOS", lines, boxWidth, 0, lipgloss.Color("#38BDF8"), lipgloss.Color("#6366F1"))
 }

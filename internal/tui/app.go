@@ -13,6 +13,7 @@ import (
 	"github.com/docker/docker/api/types/system"
 	"github.com/mario-ezquerro/dockeretior/internal/compose"
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
+	"golang.org/x/term"
 )
 
 type viewState int
@@ -82,6 +83,17 @@ func NewApp(cli *docker.Client, initialDir string) AppModel {
 
 	entries, _ := compose.ScanDirectory(initialDir)
 
+	w, h, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil || w <= 0 || h <= 0 {
+		w, h, _ = term.GetSize(int(os.Stdin.Fd()))
+	}
+	if w <= 0 {
+		w = 100
+	}
+	if h <= 0 {
+		h = 30
+	}
+
 	m := AppModel{
 		cli:               cli,
 		state:             viewContainers, // Default view is Containers dashboard!
@@ -89,8 +101,8 @@ func NewApp(cli *docker.Client, initialDir string) AppModel {
 		cursor:            0,
 		currentDir:        initialDir,
 		composeEntries:    entries,
-		width:             100,
-		height:            30,
+		width:             w,
+		height:            h,
 	}
 
 	for _, e := range entries {
@@ -569,7 +581,7 @@ func (m AppModel) View() string {
 			m.height,
 		)
 	case viewInspect:
-		return renderInspectView(m.inspectingJSON, m.width)
+		return renderInspectView(m.inspectingJSON, m.width, m.height)
 	case viewLogs:
 		return renderLogsView(m.activeLogName, m.activeLogText)
 	case viewCompose:

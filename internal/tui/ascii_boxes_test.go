@@ -10,7 +10,7 @@ import (
 
 func TestDrawASCIIBox(t *testing.T) {
 	lines := []string{"Línea 1 de prueba", "Línea 2 de prueba"}
-	box := DrawASCIIBox("TEST TITLE", lines, 40, lipgloss.Color("#FFFFFF"), lipgloss.Color("#6366F1"))
+	box := DrawASCIIBox("TEST TITLE", lines, 40, 0, lipgloss.Color("#FFFFFF"), lipgloss.Color("#6366F1"))
 
 	if !strings.Contains(box, "TEST TITLE") {
 		t.Errorf("box does not contain title: %s", box)
@@ -70,22 +70,22 @@ func TestRenderWindows(t *testing.T) {
 		Uptime:        "Up 10 minutes",
 	}
 
-	wCPU := RenderCPUWindow(m, 50, false)
+	wCPU := RenderCPUWindow(m, 50, 6)
 	if !strings.Contains(wCPU, "CARGA CPU") || !strings.Contains(wCPU, "15.50%") {
 		t.Errorf("RenderCPUWindow missing metrics: %s", wCPU)
 	}
 
-	wMem := RenderMemoryWindow(m, 50, false)
+	wMem := RenderMemoryWindow(m, 50, 6)
 	if !strings.Contains(wMem, "CARGA MEMORIA") || !strings.Contains(wMem, "1.5%") {
 		t.Errorf("RenderMemoryWindow missing metrics: %s", wMem)
 	}
 
-	wNet := RenderNetworkWindow(m, 50, false)
+	wNet := RenderNetworkWindow(m, 50, 6)
 	if !strings.Contains(wNet, "RED (I/O)") {
 		t.Errorf("RenderNetworkWindow missing metrics: %s", wNet)
 	}
 
-	wDet := RenderDetailsWindow(m, 50, false)
+	wDet := RenderDetailsWindow(m, 50, 6)
 	if !strings.Contains(wDet, "RESTO DE USOS") || !strings.Contains(wDet, "172.17.0.2") {
 		t.Errorf("RenderDetailsWindow missing metrics: %s", wDet)
 	}

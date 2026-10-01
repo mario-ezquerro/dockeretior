@@ -9,8 +9,8 @@ import (
 	"github.com/mattn/go-runewidth"
 )
 
-// DrawASCIIBox creates a window drawn with ASCII / UTF-8 box characters ("rayitas").
-func DrawASCIIBox(title string, lines []string, width int, titleColor lipgloss.Color, borderColor lipgloss.Color) string {
+// DrawASCIIBox creates a window drawn with ASCII / UTF-8 box characters ("rayitas") filling targetHeight.
+func DrawASCIIBox(title string, lines []string, width int, targetHeight int, titleColor lipgloss.Color, borderColor lipgloss.Color) string {
 	if width < 25 {
 		width = 25
 	}
@@ -43,6 +43,17 @@ func DrawASCIIBox(title string, lines []string, width int, titleColor lipgloss.C
 			pad = 0
 		}
 		middleLines = append(middleLines, borderStyle.Render("│ ") + l + strings.Repeat(" ", pad) + borderStyle.Render(" │"))
+	}
+
+	// Pad or truncate to targetHeight (topLine is 1 line, bottomLine is 1 line)
+	if targetHeight > 2 {
+		capacity := targetHeight - 2
+		for len(middleLines) < capacity {
+			middleLines = append(middleLines, borderStyle.Render("│ ") + strings.Repeat(" ", contentWidth) + borderStyle.Render(" │"))
+		}
+		if len(middleLines) > capacity {
+			middleLines = middleLines[:capacity]
+		}
 	}
 
 	// Bottom line: └──────────────────────────────┘
@@ -128,7 +139,7 @@ func RenderSparkline(values []float64, maxVal float64, width int) string {
 }
 
 // RenderCPUWindow creates ASCII Window 1: Carga de CPU.
-func RenderCPUWindow(m *docker.ContainerMetrics, width int, compact bool) string {
+func RenderCPUWindow(m *docker.ContainerMetrics, width int, targetHeight int) string {
 	title := "1. CARGA CPU"
 	borderColor := PrimaryColor
 	if m == nil || !m.IsRunning {
@@ -136,10 +147,10 @@ func RenderCPUWindow(m *docker.ContainerMetrics, width int, compact bool) string
 			"Estado : " + StatusStoppedStyle.Render("Detenido"),
 			"Carga  : " + DimStyle.Render("Inactivo (0.0%)"),
 		}
-		if !compact {
+		if targetHeight >= 5 {
 			lines = append(lines, "Nota   : Iniciar con [F6]")
 		}
-		return DrawASCIIBox(title, lines, width, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
+		return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
 	}
 
 	cpuColor := SuccessColor
@@ -163,10 +174,10 @@ func RenderCPUWindow(m *docker.ContainerMetrics, width int, compact bool) string
 	spark := RenderSparkline(m.CPUSparkline, 100.0, sparkWidth)
 
 	var lines []string
-	if compact {
+	if targetHeight <= 4 {
 		lines = []string{
 			fmt.Sprintf("CPU: %s (%dc) %s", pctStr, m.OnlineCPUs, RenderProgressBar(m.CPUPercent, barWidth)),
-			fmt.Sprintf("Tendencia: %s %s", spark, DimStyle.Render("(histórico)")),
+			fmt.Sprintf("Tendencia: %s", spark),
 		}
 	} else {
 		lines = []string{
@@ -174,13 +185,16 @@ func RenderCPUWindow(m *docker.ContainerMetrics, width int, compact bool) string
 			fmt.Sprintf("Barra     : %s %s", RenderProgressBar(m.CPUPercent, barWidth), pctStr),
 			fmt.Sprintf("Tendencia : %s %s", spark, DimStyle.Render("(histórico)")),
 		}
+		if targetHeight >= 6 {
+			lines = append(lines, fmt.Sprintf("Delta Sys : %s", DimStyle.Render(fmt.Sprintf("%.1f ms/muestra", m.SystemDeltaMs))))
+		}
 	}
 
-	return DrawASCIIBox(title, lines, width, lipgloss.Color("#38BDF8"), borderColor)
+	return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#38BDF8"), borderColor)
 }
 
 // RenderMemoryWindow creates ASCII Window 2: Carga de Memoria.
-func RenderMemoryWindow(m *docker.ContainerMetrics, width int, compact bool) string {
+func RenderMemoryWindow(m *docker.ContainerMetrics, width int, targetHeight int) string {
 	title := "2. CARGA MEMORIA"
 	borderColor := PrimaryColor
 	if m == nil || !m.IsRunning {
@@ -188,7 +202,7 @@ func RenderMemoryWindow(m *docker.ContainerMetrics, width int, compact bool) str
 			"Estado : " + StatusStoppedStyle.Render("Inactivo"),
 			"Uso RAM: 0 B / 0 B (0%)",
 		}
-		return DrawASCIIBox(title, lines, width, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
+		return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
 	}
 
 	memColor := SuccessColor
@@ -205,7 +219,7 @@ func RenderMemoryWindow(m *docker.ContainerMetrics, width int, compact bool) str
 	}
 
 	var lines []string
-	if compact {
+	if targetHeight <= 4 {
 		lines = []string{
 			fmt.Sprintf("RAM: %s/%s (%s)", docker.FormatBytes(m.MemUsage), docker.FormatBytes(m.MemLimit), memPctStr),
 			fmt.Sprintf("Barra: %s  Pico: %s", RenderProgressBar(m.MemPercent, barWidth), docker.FormatBytes(m.MemMaxUsage)),
@@ -216,13 +230,16 @@ func RenderMemoryWindow(m *docker.ContainerMetrics, width int, compact bool) str
 			fmt.Sprintf("Barra   : %s %s", RenderProgressBar(m.MemPercent, barWidth), memPctStr),
 			fmt.Sprintf("Pico    : %s │ Caché: %s", docker.FormatBytes(m.MemMaxUsage), docker.FormatBytes(m.MemCache)),
 		}
+		if targetHeight >= 6 {
+			lines = append(lines, fmt.Sprintf("Límite  : %s", docker.FormatBytes(m.MemLimit)))
+		}
 	}
 
-	return DrawASCIIBox(title, lines, width, lipgloss.Color("#A855F7"), borderColor)
+	return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#A855F7"), borderColor)
 }
 
 // RenderNetworkWindow creates ASCII Window 3: Carga de Red (I/O).
-func RenderNetworkWindow(m *docker.ContainerMetrics, width int, compact bool) string {
+func RenderNetworkWindow(m *docker.ContainerMetrics, width int, targetHeight int) string {
 	title := "3. RED (I/O)"
 	borderColor := PrimaryColor
 	if m == nil || !m.IsRunning {
@@ -230,14 +247,14 @@ func RenderNetworkWindow(m *docker.ContainerMetrics, width int, compact bool) st
 			"Estado : " + StatusStoppedStyle.Render("Desconectado"),
 			"Tráfico: 0 B",
 		}
-		return DrawASCIIBox(title, lines, width, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
+		return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
 	}
 
 	rxStr := lipgloss.NewStyle().Bold(true).Foreground(SuccessColor).Render(docker.FormatBytes(m.NetRxBytes))
 	txStr := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#38BDF8")).Render(docker.FormatBytes(m.NetTxBytes))
 
 	var lines []string
-	if compact {
+	if targetHeight <= 4 {
 		lines = []string{
 			fmt.Sprintf("▼ RX: %s │ ▲ TX: %s", rxStr, txStr),
 			fmt.Sprintf("Pkts: RX %s │ TX %s", docker.FormatPackets(m.NetRxPackets), docker.FormatPackets(m.NetTxPackets)),
@@ -248,20 +265,23 @@ func RenderNetworkWindow(m *docker.ContainerMetrics, width int, compact bool) st
 			fmt.Sprintf("Tráfico TX (↑): %s (%s)", txStr, docker.FormatPackets(m.NetTxPackets)),
 			fmt.Sprintf("Total Red     : %s", docker.FormatBytes(m.NetRxBytes+m.NetTxBytes)),
 		}
+		if targetHeight >= 6 {
+			lines = append(lines, fmt.Sprintf("Flujo Red     : ▼ RX %s │ ▲ TX %s", rxStr, txStr))
+		}
 	}
 
-	return DrawASCIIBox(title, lines, width, lipgloss.Color("#10B981"), borderColor)
+	return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#10B981"), borderColor)
 }
 
 // RenderDetailsWindow creates ASCII Window 4: Resto de Usos y Estado.
-func RenderDetailsWindow(m *docker.ContainerMetrics, width int, compact bool) string {
+func RenderDetailsWindow(m *docker.ContainerMetrics, width int, targetHeight int) string {
 	title := "4. RESTO DE USOS"
 	borderColor := PrimaryColor
 	if m == nil {
 		lines := []string{
 			"Estado : " + DimStyle.Render("Sin contenedor"),
 		}
-		return DrawASCIIBox(title, lines, width, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
+		return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#94A3B8"), lipgloss.Color("#475569"))
 	}
 
 	stateRendered := StatusRunningStyle.Render("● " + m.State)
@@ -273,36 +293,58 @@ func RenderDetailsWindow(m *docker.ContainerMetrics, width int, compact bool) st
 	blkWriteStr := docker.FormatBytes(m.BlkWrite)
 
 	var lines []string
-	if compact {
+	if targetHeight <= 4 {
 		lines = []string{
 			fmt.Sprintf("Disco : R %s │ W %s", blkReadStr, blkWriteStr),
-			fmt.Sprintf("PIDs  : %d │ IP: %s", m.PIDs, m.IPAddress),
-			fmt.Sprintf("Estado: %s (%s)", stateRendered, m.Uptime),
+			fmt.Sprintf("Estado: %s (PIDs: %d)", stateRendered, m.PIDs),
 		}
 	} else {
 		lines = []string{
 			fmt.Sprintf("Disco I/O: R %s │ W %s", blkReadStr, blkWriteStr),
 			fmt.Sprintf("Procesos : %d PIDs │ IP: %s", m.PIDs, m.IPAddress),
-			fmt.Sprintf("Red & IP : %s (%s)", m.IPAddress, m.NetworkName),
 			fmt.Sprintf("Estado   : %s (%s)", stateRendered, m.Uptime),
+		}
+		if targetHeight >= 6 {
+			lines = append(lines, fmt.Sprintf("Red/Puert: %s (%s)", m.NetworkName, m.Ports))
 		}
 	}
 
-	return DrawASCIIBox(title, lines, width, lipgloss.Color("#F59E0B"), borderColor)
+	return DrawASCIIBox(title, lines, width, targetHeight, lipgloss.Color("#F59E0B"), borderColor)
 }
 
-// RenderRightPane stacks the 4 ASCII windows vertically.
-func RenderRightPane(m *docker.ContainerMetrics, width int, height int) string {
+// RenderRightPane distributes targetHeight across the 4 ASCII windows.
+func RenderRightPane(m *docker.ContainerMetrics, width int, targetHeight int) string {
 	if width < 26 {
 		width = 26
 	}
+	if targetHeight < 16 {
+		targetHeight = 16
+	}
 
-	compact := height < 28
+	baseH := targetHeight / 4
+	rem := targetHeight % 4
 
-	w1 := RenderCPUWindow(m, width, compact)
-	w2 := RenderMemoryWindow(m, width, compact)
-	w3 := RenderNetworkWindow(m, width, compact)
-	w4 := RenderDetailsWindow(m, width, compact)
+	h1 := baseH
+	h2 := baseH
+	h3 := baseH
+	h4 := baseH
+	if rem > 0 {
+		h1++
+		rem--
+	}
+	if rem > 0 {
+		h2++
+		rem--
+	}
+	if rem > 0 {
+		h3++
+		rem--
+	}
+
+	w1 := RenderCPUWindow(m, width, h1)
+	w2 := RenderMemoryWindow(m, width, h2)
+	w3 := RenderNetworkWindow(m, width, h3)
+	w4 := RenderDetailsWindow(m, width, h4)
 
 	return w1 + "\n" + w2 + "\n" + w3 + "\n" + w4
 }
