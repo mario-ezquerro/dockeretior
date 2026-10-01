@@ -14,9 +14,11 @@ import (
 
 // ComposeProject represents a detected Docker Compose project.
 type ComposeProject struct {
-	FilePath string            `json:"file_path"`
-	FileName string            `json:"file_name"`
+	FilePath string             `json:"file_path"`
+	FileName string             `json:"file_name"`
 	Services map[string]Service `json:"services"`
+	Stack    *ComposeStack      `json:"stack,omitempty"`
+	Graph    *TopologyGraph     `json:"graph,omitempty"`
 }
 
 // Service represents a parsed service definition inside compose.
@@ -138,11 +140,18 @@ func ParseComposeFile(path string) (*ComposeProject, error) {
 		return nil, fmt.Errorf("failed to unmarshal compose YAML: %w", err)
 	}
 
-	return &ComposeProject{
+	proj := &ComposeProject{
 		FilePath: path,
 		FileName: filepath.Base(path),
 		Services: raw.Services,
-	}, nil
+	}
+
+	if stack, err := ParseComposeStack(path); err == nil {
+		proj.Stack = stack
+		proj.Graph = BuildTopologyGraph(stack)
+	}
+
+	return proj, nil
 }
 
 // ExecuteCommand runs a docker compose subcommand against a specific compose file.

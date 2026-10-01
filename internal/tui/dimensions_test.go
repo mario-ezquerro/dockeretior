@@ -61,5 +61,18 @@ func TestDimensionsFit(t *testing.T) {
 		if len(docLines) > sz.h+1 {
 			t.Errorf("[AutoDoctor %dx%d] Total lines %d exceeds height %d!", sz.w, sz.h, len(docLines), sz.h)
 		}
+
+		// Also verify Compose view fits dimensions perfectly (both file mode and topology mode)
+		compOut := renderComposeView(".", nil, nil, 0, false, "", "", sz.w, sz.h)
+		compLines := strings.Split(compOut, "\n")
+		for i, line := range compLines {
+			visWidth := runewidth.StringWidth(stripANSI(line))
+			if visWidth > sz.w {
+				t.Errorf("[Compose %dx%d] Line %d exceeds width %d! visWidth=%d: %q", sz.w, sz.h, i, sz.w, visWidth, line)
+			}
+		}
+		if len(compLines) > sz.h+1 {
+			t.Errorf("[Compose %dx%d] Total lines %d exceeds height %d!", sz.w, sz.h, len(compLines), sz.h)
+		}
 	}
 }

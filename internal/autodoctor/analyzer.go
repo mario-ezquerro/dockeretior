@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
+	"github.com/mario-ezquerro/dockeretior/internal/history"
 )
 
 // RunAudit performs a full system, container, storage, and security health check.
@@ -336,7 +337,57 @@ func RunAudit(ctx context.Context, cli *docker.Client) (*HealthReport, error) {
 		{Name: "Seguridad", Status: secSev, Summary: secSummary},
 	}
 
-	// 5. Calculate Health Score (0 - 100)
+	// 5. Histórico y Análisis de Tendencias (Memory creep, disk growth, restart spikes)
+	histStore := history.LoadHistory("")
+	snap := history.Snapshot{
+		Timestamp:   time.Now(),
+		DockerBytes: report.Storage.TotalDockerBytes,
+		Containers:  make(map[string]history.ContainerSample),
+	}
+	for _, c := range containers {
+		name := "unnamed"
+		if len(c.Names) > 0 {
+			name = strings.TrimPrefix(c.Names[0], "/")
+		}
+		var restarts int
+		var mem uint64
+		if insp, err := cli.InspectContainer(ctx, c.ID); err == nil {
+			restarts = insp.RestartCount
+			if insp.HostConfig != nil {
+				mem = uint64(insp.HostConfig.Memory)
+			}
+		}
+		snap.Containers[name] = history.ContainerSample{
+			ID:           c.ID,
+			Name:         name,
+			MemoryBytes:  mem,
+			RestartCount: restarts,
+			State:        c.State,
+		}
+	}
+	_ = histStore.RecordSnapshot(snap)
+	trends := histStore.AnalyzeTrends()
+	report.Trends = trends
+
+	for _, tr := range trends {
+		sev := SeverityInfo
+		if tr.IsWarning {
+			sev = SeverityWarning
+		}
+		issues = append(issues, Issue{
+			ID:             fmt.Sprintf("trend_%s_%s", tr.Target, tr.Metric),
+			Category:       CategoryContainer,
+			Severity:       sev,
+			Title:          fmt.Sprintf("Tendencia en '%s': %s", tr.Target, tr.ChangeText),
+			Target:         tr.Target,
+			Description:    fmt.Sprintf("%s varió de %s a %s.", tr.Metric, tr.OldValue, tr.NewValue),
+			RootCause:      "Deriva acumulada en el historial de uso.",
+			Recommendation: "Monitorea la curva de consumo para anticipar saturaciones o fugas de recursos.",
+			Timestamp:      tr.DetectedAt,
+		})
+	}
+
+	// 6. Calculate Health Score (0 - 100)
 	score := 100
 	for _, iss := range issues {
 		switch iss.Severity {

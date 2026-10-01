@@ -1,0 +1,46 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - web
+
+  api:
+    image: mycompany/api:v1.0
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - redis
+    environment:
+      - DB_HOST=postgres
+      - CACHE_HOST=redis
+    networks:
+      - web
+      - internal
+
+  postgres:
+    image: postgres:16-alpine
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: admin
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    networks:
+      - internal
+
+networks:
+  web:
+  internal:
+
+volumes:
+  pg_data:

@@ -2,6 +2,8 @@ package autodoctor
 
 import (
 	"time"
+
+	"github.com/mario-ezquerro/dockeretior/internal/history"
 )
 
 // Severity represents the criticality level of an identified issue.
@@ -70,8 +72,9 @@ type HealthReport struct {
 	Issues            []Issue           `json:"issues"`
 	TopActions        []Issue           `json:"top_actions"` // Top 3 prioritized
 	Storage           StorageAudit      `json:"storage"`
-	ContainersRunning int               `json:"containers_running"`
-	ContainersStopped int               `json:"containers_stopped"`
-	ContainersTotal   int               `json:"containers_total"`
-	GeneratedAt       time.Time         `json:"generated_at"`
+	ContainersRunning int                    `json:"containers_running"`
+	ContainersStopped int                    `json:"containers_stopped"`
+	ContainersTotal   int                    `json:"containers_total"`
+	Trends            []history.TrendFinding `json:"trends,omitempty"`
+	GeneratedAt       time.Time              `json:"generated_at"`
 }

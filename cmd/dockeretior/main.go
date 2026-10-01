@@ -15,6 +15,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/creack/pty"
+	"github.com/mario-ezquerro/dockeretior/internal/alerts"
 	"github.com/mario-ezquerro/dockeretior/internal/autodoctor"
 	"github.com/mario-ezquerro/dockeretior/internal/compose"
 	"github.com/mario-ezquerro/dockeretior/internal/docker"
@@ -100,17 +101,79 @@ func main() {
 	_ = flag.Bool("tui", true, "Lanza directamente la interfaz TUI (activo por defecto)")
 	debugKeys := flag.Bool("debug-keys", false, "Modo diagnóstico: muestra los bytes exactos enviados por el teclado")
 	doctorFlag := flag.Bool("doctor", false, "Ejecuta AutoDoctor y muestra el informe de salud del servidor en consola")
+	composeFlag := flag.Bool("compose", false, "Analiza y muestra el mapa topológico del archivo Compose local")
+	testAlertFlag := flag.Bool("test-alert", false, "Envía una notificación de prueba a los webhooks/Telegram configurados")
 	versionFlag := flag.Bool("version", false, "Muestra la versión de dockeretior")
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("dockeretior v1.2.0 (Interactive Docker Dashboard, AutoDoctor & Supervisor)")
+		fmt.Println("dockeretior v1.3.0 (Interactive Docker Dashboard, AutoDoctor & Compose Topology)")
 		return
 	}
 
 	// Modo diagnóstico de teclas para terminales
 	if *debugKeys {
 		runDebugKeys()
+		return
+	}
+
+	// Prueba de envío de alertas
+	if *testAlertFlag {
+		cfg := alerts.LoadAlertConfig("")
+		fmt.Printf("Configuración de alertas (~/.dockeretior/alerts.json):\n")
+		fmt.Printf(" • Servidor : %s\n", cfg.ServerName)
+		fmt.Printf(" • Webhook  : %s\n", cfg.WebhookURL)
+		fmt.Printf(" • Telegram : Bot=%t, ChatID=%s\n", cfg.TelegramBotToken != "", cfg.TelegramChatID)
+		if cfg.WebhookURL == "" && cfg.TelegramBotToken == "" {
+			fmt.Println("⚠️  No hay ningún Webhook ni bot de Telegram configurado en ~/.dockeretior/alerts.json.")
+			fmt.Println("   Edita el archivo y define \"webhook_url\" o \"telegram_bot_token\" / \"telegram_chat_id\".")
+			return
+		}
+		payload := alerts.AlertPayload{
+			ServerName:     cfg.ServerName,
+			Title:          "Prueba de Notificación Dockeretior",
+			Target:         "Docker Host",
+			Severity:       autodoctor.SeverityInfo,
+			RootCause:      "Comprobación manual de conectividad de alertas.",
+			Recommendation: "Las notificaciones automáticas están operativas.",
+			Timestamp:      time.Now(),
+		}
+		testCfg := cfg
+		testCfg.Enabled = true
+		if err := alerts.DispatchAlert(context.Background(), testCfg, payload); err != nil {
+			fmt.Printf("❌ Error enviando alerta: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("✔ Alerta de prueba enviada con éxito.")
+		return
+	}
+
+	// Modo Compose Topológico directo en CLI
+	if *composeFlag {
+		cwd, _ := os.Getwd()
+		entries, err := compose.ScanDirectory(cwd)
+		if err != nil {
+			fmt.Printf("❌ Error explorando directorio: %v\n", err)
+			os.Exit(1)
+		}
+		var foundPath string
+		for _, e := range entries {
+			if !e.IsDir && e.IsCompose {
+				foundPath = e.Path
+				break
+			}
+		}
+		if foundPath == "" {
+			fmt.Println("⚠️  No se encontró ningún archivo Compose (.yml / .yaml) en el directorio actual.")
+			os.Exit(1)
+		}
+		stack, err := compose.ParseComposeStack(foundPath)
+		if err != nil {
+			fmt.Printf("❌ Error al procesar archivo compose: %v\n", err)
+			os.Exit(1)
+		}
+		graph := compose.BuildTopologyGraph(stack)
+		fmt.Print(compose.RenderTopologyASCII(stack, graph, 90))
 		return
 	}
 
@@ -376,6 +439,17 @@ func printDoctorCLIReport(rep *autodoctor.HealthReport) {
 			}
 		}
 	}
+	if len(rep.Trends) > 0 {
+		fmt.Println("--------------------------------------------------------------------------------")
+		fmt.Println("DERIVA Y TENDENCIAS HISTÓRICAS:")
+		for _, tr := range rep.Trends {
+			icon := "📈"
+			if tr.IsWarning {
+				icon = "⚠️"
+			}
+			fmt.Printf("  %s %s (%s): %s\n", icon, tr.Target, tr.Metric, tr.ChangeText)
+		}
+	}
 	if rep.Storage.TotalReclaimableBytes > 0 {
 		fmt.Println("--------------------------------------------------------------------------------")
 		fmt.Printf("💡 ESPACIO RECUPERABLE: %s acumulados en imágenes sin usar y caché de Docker.\n",
@@ -385,4 +459,3 @@ func printDoctorCLIReport(rep *autodoctor.HealthReport) {
 	}
 	fmt.Println("================================================================================")
 }
-

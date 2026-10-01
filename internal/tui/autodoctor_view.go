@@ -145,7 +145,21 @@ func renderAutoDoctorView(
 		}
 	}
 
-	// 5. Storage Summary callout if reclaimable > 0
+	// 5. Historical Trends & Drift
+	if len(report.Trends) > 0 {
+		lines = append(lines, "")
+		lines = append(lines, padOrTruncate(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#F59E0B")).Render("── DERIVA Y TENDENCIAS HISTÓRICAS ─────────────────────────────────"), width))
+		for _, tr := range report.Trends {
+			icon := "📈"
+			if tr.IsWarning {
+				icon = "⚠️"
+			}
+			trendLine := fmt.Sprintf("  %s %s (%s): %s", icon, tr.Target, tr.Metric, tr.ChangeText)
+			lines = append(lines, padOrTruncate(trendLine, width))
+		}
+	}
+
+	// 6. Storage Summary callout if reclaimable > 0
 	if report.Storage.TotalReclaimableBytes > 0 {
 		lines = append(lines, "")
 		recStr := docker.FormatBytes(uint64(report.Storage.TotalReclaimableBytes))

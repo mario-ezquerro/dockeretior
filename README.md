@@ -29,6 +29,16 @@ Al terminar o volver a pulsar la combinación, la pantalla vuelve de forma **100
 
 ---
 
+- 🐙 **Docker Compose Visual & Topología de Redes:**
+  - **Árbol Topológico en Terminal:** Representación jerárquica con conectores ASCII de niveles de infraestructura: *Ingress/Frontend* ──▶ *Lógica/APIs* ──▶ *Bases de Datos/Caché*.
+  - **Matriz de Enlaces:** Visualiza qué servicio depende de cuál (`depends_on`), puertos mapeados, volúmenes montados y redes internas.
+  - **Modo CLI (`--compose`):** Genera e imprime el diagrama topológico del stack Compose local en consola.
+- 📈 **Histórico Local & Detección de Deriva:**
+  - Base de datos ligera embebida (`~/.dockeretior/metrics_history.json`) para registrar evolución de métricas.
+  - Detecta fugas y anomalías: *"PostgreSQL aumentó un 35% de RAM respecto al histórico"* o picos repentinos de reinicios.
+- 🚨 **Sistema de Alertas Integrado (Slack / Discord / Telegram):**
+  - Notificaciones inmediatas ante incidentes críticos (Exit 137 OOM, loops de reinicios, discos >90%).
+  - Configurable en `~/.dockeretior/alerts.json` y verificable con `--test-alert`.
 - 🩺 **AutoDoctor (Diagnóstico Inteligente del Servidor):**
   - **Health Score (0 - 100):** Indicador de salud global (`🟢 Excelente`, `🟡 Precaución`, `🔴 Crítico`) en la cabecera del panel.
   - **Diagnóstico de Causa Raíz:** En lugar de solo mostrar errores, AutoDoctor cruza exit codes, inspección de contenedores, cgroups de memoria (Exit 137 OOM Killer), scripts faltantes (Exit 126/127), bucles continuos de reinicio y healthchecks fallidos.
@@ -75,6 +85,7 @@ Al terminar o volver a pulsar la combinación, la pantalla vuelve de forma **100
 | <kbd>F10</kbd> | <kbd>q</kbd> o <kbd>0</kbd> o <kbd>Esc</kbd> | **Salir:** Cerrar Dockeretior y regresar al bash / SSH |
 | <kbd>a</kbd> / <kbd>A</kbd> | | **AutoDoctor:** Diagnóstico de salud, causas raíz y recomendaciones |
 | <kbd>c</kbd> | | **Compose / Limpiar:** Compose en panel principal o Limpieza de espacio en AutoDoctor |
+| <kbd>t</kbd> / <kbd>Tab</kbd> | | **Topología:** Alternar mapa topológico visual y explorador en vista Compose |
 | <kbd>↑</kbd> / <kbd>↓</kbd> | <kbd>k</kbd> / <kbd>j</kbd> | **Navegación:** Desplazar cursor sobre los contenedores y actualizar ventanas |
 
 ---
@@ -121,13 +132,20 @@ Simplemente escribe en tu terminal o sesión SSH:
 dockeretior
 ```
 
-Se abrirá inmediatamente la pantalla dividida (*split view*) mostrando todos los contenedores en ejecución en el margen izquierdo y las 4 ventanas ASCII con las cargas de CPU, memoria, red y resto de usos en el margen derecho, con la botonera de funciones F1 - F10 en la parte inferior. Puedes pulsar <kbd>a</kbd> en cualquier momento para abrir **AutoDoctor** y revisar la salud del servidor.
+Se abrirá inmediatamente la pantalla dividida (*split view*) mostrando todos los contenedores en ejecución en el margen izquierdo y las 4 ventanas ASCII con las cargas de CPU, memoria, red y resto de usos en el margen derecho, con la botonera de funciones F1 - F10 en la parte inferior. Puedes pulsar <kbd>a</kbd> para abrir **AutoDoctor** o <kbd>c</kbd> para explorar proyectos **Compose**.
 
-### 2. AutoDoctor en Línea de Comandos (`--doctor`)
-Para obtener un diagnóstico instantáneo de fallos, causas raíz y recomendaciones sin entrar a la TUI interactiva (ideal para scripts, alertas o inspección rápida por SSH):
+### 2. Comandos CLI Directos (Sin entrar a la TUI)
+Dockeretior también funciona como una utilidad rápida de diagnóstico y automatización para scripts, cron o terminal:
 
 ```bash
+# Diagnóstico de salud y recomendaciones del servidor
 dockeretior --doctor
+
+# Visualizar mapa topológico de dependencias del compose.yml actual
+dockeretior --compose
+
+# Probar envío de alertas a Webhook (Slack/Discord) o Telegram
+dockeretior --test-alert
 ```
 
 ### 3. Modo Supervisor Latente en Segundo Plano (*Hot-Toggle*)

@@ -69,6 +69,7 @@ type AppModel struct {
 	currentDir         string
 	composeEntries     []compose.FileEntry
 	selectedProj       *compose.ComposeProject
+	showTopology       bool
 	activeLogName      string
 	activeLogID        string
 	activeLogText      string
@@ -123,6 +124,7 @@ func NewApp(cli *docker.Client, initialDir string) AppModel {
 		if !e.IsDir && e.IsCompose {
 			proj, _ := compose.ParseComposeFile(e.Path)
 			m.selectedProj = proj
+			m.showTopology = true
 			break
 		}
 	}
@@ -352,7 +354,15 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.composeOutput = ""
 					return m, nil
 				}
+				if m.showTopology {
+					m.showTopology = false
+					return m, nil
+				}
 				m.state = viewContainers
+				return m, nil
+			}
+			if key == "t" || key == "tab" {
+				m.showTopology = !m.showTopology
 				return m, nil
 			}
 			if key == "enter" && len(m.composeEntries) > 0 && m.cursor < len(m.composeEntries) {
@@ -365,7 +375,8 @@ func (m AppModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					proj, err := compose.ParseComposeFile(selected.Path)
 					if err == nil {
 						m.selectedProj = proj
-						m.statusMsg = fmt.Sprintf("Archivo cargado: %s (%d servicios)", selected.Name, len(proj.Services))
+						m.showTopology = true
+						m.statusMsg = fmt.Sprintf("Stack cargado: %s (%d servicios)", selected.Name, len(proj.Services))
 					} else {
 						m.statusMsg = fmt.Sprintf("Error al leer YAML: %v", err)
 					}
@@ -663,7 +674,7 @@ func (m AppModel) View() string {
 	case viewLogs:
 		return renderLogsView(m.activeLogName, m.activeLogText)
 	case viewCompose:
-		return renderComposeView(m.currentDir, m.composeEntries, m.selectedProj, m.cursor, m.statusMsg, m.composeOutput)
+		return renderComposeView(m.currentDir, m.composeEntries, m.selectedProj, m.cursor, m.showTopology, m.statusMsg, m.composeOutput, m.width, m.height)
 	case viewSystemInfo:
 		return renderSystemInfoView(m.sysInfo)
 	case viewAutoDoctor:
