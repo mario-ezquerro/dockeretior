@@ -93,13 +93,15 @@ type Supervisor struct {
 }
 
 func main() {
-	onlyTUI := flag.Bool("tui", false, "Lanza directamente la interfaz TUI a pantalla completa")
+	supervisorFlag := flag.Bool("supervisor", false, "Inicia como supervisor PTY latente en segundo plano (Hot-Toggle)")
+	flag.BoolVar(supervisorFlag, "s", false, "Alias de --supervisor")
+	_ = flag.Bool("tui", true, "Lanza directamente la interfaz TUI (activo por defecto)")
 	debugKeys := flag.Bool("debug-keys", false, "Modo diagnóstico: muestra los bytes exactos enviados por el teclado")
 	versionFlag := flag.Bool("version", false, "Muestra la versión de dockeretior")
 	flag.Parse()
 
 	if *versionFlag {
-		fmt.Println("dockeretior v1.0.0 (Latent PTY Docker Supervisor)")
+		fmt.Println("dockeretior v1.1.0 (Interactive Docker Dashboard & Supervisor)")
 		return
 	}
 
@@ -119,8 +121,8 @@ func main() {
 		}
 	}()
 
-	// Modo TUI directo si se solicita con --tui
-	if *onlyTUI {
+	// Por defecto, ejecuta la interfaz TUI interactiva a pantalla completa
+	if !*supervisorFlag {
 		cwd, _ := os.Getwd()
 		p := tea.NewProgram(tui.NewApp(dockerCli, cwd), tea.WithAltScreen())
 		if _, err := p.Run(); err != nil {
@@ -130,7 +132,7 @@ func main() {
 		return
 	}
 
-	// Supervisor PTY
+	// Supervisor PTY latente (si se especifica con --supervisor o -s)
 	shell := os.Getenv("SHELL")
 	if shell == "" {
 		shell = "/bin/bash"

@@ -31,37 +31,45 @@ Al terminar o volver a pulsar la combinación, la pantalla vuelve de forma **100
 
 ## ✨ Características
 
-- ⚡ **Alternancia en caliente (*Hot-Toggle*):** Entra y sal de la interfaz gráfica al milisegundo mediante `Ctrl + Alt + Espacio`.
-- 🛡️ **Sin interrupciones:** No cierra subprocesos ni interrumpe comandos a medio teclear en la terminal.
-- 📦 **Gestión de Contenedores:**
-  - Inspección de estado en tiempo real (ID, nombre, imagen, puertos, estado).
-  - Acciones de ciclo de vida con un solo toque: Detener (`s`), Iniciar (`a`), Reiniciar (`r`), Pausar/Reanudar (`p`).
-  - Visor detallado de configuración e inspección en JSON (`d`).
-- 📜 **Streaming de Logs en Vivo:** Visualización inmediata de las últimas líneas de logs de cualquier contenedor con opción de refresco en caliente (`l`).
-- 🐙 **Escaneo Inteligente de Docker Compose:**
-  - Detección automática de archivos `docker-compose.yml`, `docker-compose.yaml` y `compose.yml` en el directorio de trabajo.
-  - Desglose visual de servicios, imágenes y puertos mapeados.
-  - Ejecución de comandos Compose (`u` para `compose up -d`, `r` para restart, etc.).
-- 📊 **Panel de Información del Host y Daemon:** Visión global del estado del motor Docker (versión, contenedores en ejecución/pausados, storage driver, CPU y memoria del sistema).
-- 🧹 **Búfer ANSI Limpio:** Utiliza conmutación `smcup`/`rmcup` para garantizar cero residuos en el historial de comandos de tu terminal.
+- 🖥️ **Panel Interactivo por Defecto:** Al ejecutar `dockeretior` en tu shell (local o por **SSH**), se despliega de inmediato el dashboard con todos los contenedores en ejecución.
+- 📐 **Diseño en Pantalla Dividida (*Split View*):**
+  - **Margen Izquierdo:** Tabla interactiva de contenedores con indicadores de estado en color, nombres, imágenes, puertos e IDs.
+  - **Margen Derecho (Ventanas ASCII):** Paneles delimitados por caracteres ASCII / rayitas que muestran en tiempo real las métricas del contenedor seleccionado:
+    1. **Carga de CPU:** Porcentaje de uso, núcleos activos, barra de carga `[████░░░░]` y gráfico histórico de tendencia (*sparkline*).
+    2. **Carga de Memoria:** Memoria usada vs límite del host, porcentaje, barra gráfica, caché inactiva y pico máximo.
+    3. **Carga de Red (I/O):** Tráfico RX (entrante) y TX (saliente) con conteo de paquetes y flujo visual.
+    4. **Resto de Usos y Estado:** Disco Block I/O (lectura/escritura), PIDs de procesos en kernel, IP y red Docker, estado y tiempo activo (*uptime*).
+- ⌨️ **Banda de Menú Inferior (Teclas de Función F1 - F10):**
+  - **F1 Ayuda:** Ventana emergente con todos los atajos y funciones.
+  - **F2 Listar / Filtrar:** Alterna entre mostrar solo contenedores activos (*running*) o todos (activos, detenidos y pausados).
+  - **F3 Logs:** Visor de registros en vivo con refresco en caliente.
+  - **F4 Exec:** Abre una shell interactiva dentro del contenedor (`/bin/bash` o `/bin/sh`) y vuelve limpiamente al salir (`exit`).
+  - **F5 Restart:** Reinicia el contenedor seleccionado.
+  - **F6 Stop / Start:** Detiene o inicia el contenedor según su estado actual.
+  - **F7 Pausar / Reanudar:** Pausa o reanuda los procesos del contenedor.
+  - **F8 Borrar:** Cuadro de diálogo de confirmación para eliminar el contenedor, con soporte de borrado forzado (`f`).
+  - **F9 Inspect:** Inspección detallada en JSON formateado.
+  - **F10 Salir:** Cierra Dockeretior limpiamente y restaura tu terminal.
+- ⚡ **Modo Supervisor PTY (*Hot-Toggle* opcional):** Disponible con la bandera `--supervisor` o `-s` para ejecutarse en segundo plano en sesiones SSH permanentes.
 
 ---
 
 ## ⌨️ Tabla de Atajos de Teclado
 
-| Atajo | Contexto | Acción |
+| Tecla de Función | Atajo Alternativo | Acción |
 | :--- | :--- | :--- |
-| <kbd>Ctrl</kbd> + <kbd>Alt</kbd> + <kbd>Espacio</kbd> | **Global** | **Alternar entre la Shell y Dockeretior (*Toggle*)** |
-| <kbd>↑</kbd> / <kbd>↓</kbd> o <kbd>j</kbd> / <kbd>k</kbd> | Listas y Menús | Mover cursor arriba / abajo |
-| <kbd>Enter</kbd> | Menú / Listas | Acceder al módulo o inspeccionar archivo |
-| <kbd>s</kbd> | Contenedores | **Detener** contenedor seleccionado |
-| <kbd>a</kbd> | Contenedores | **Iniciar** contenedor detenido |
-| <kbd>r</kbd> | Contenedores / Logs / Compose | **Reiniciar** contenedor o proyecto / Refrescar logs |
-| <kbd>p</kbd> | Contenedores | **Pausar / Reanudar** procesos del contenedor |
-| <kbd>l</kbd> | Contenedores | Abrir visor de **logs en tiempo real** |
-| <kbd>d</kbd> | Contenedores | **Inspeccionar** contenedor (formato JSON formateado) |
-| <kbd>u</kbd> | Compose | Ejecutar `docker compose up -d` en el proyecto |
-| <kbd>q</kbd> o <kbd>Esc</kbd> | Vistas / Submenús | Volver al nivel anterior / Ocultar Dockeretior |
+| <kbd>F1</kbd> | <kbd>?</kbd> o <kbd>1</kbd> | **Ayuda:** Ver ventana emergente con la guía de teclas |
+| <kbd>F2</kbd> | <kbd>f</kbd> o <kbd>2</kbd> | **Listar / Filtrar:** Alternar entre *Solo activos* y *Todos los contenedores* |
+| <kbd>F3</kbd> | <kbd>l</kbd> o <kbd>3</kbd> | **Logs:** Abrir visor de registros en vivo |
+| <kbd>F4</kbd> | <kbd>e</kbd> o <kbd>4</kbd> | **Exec:** Entrar al contenedor con terminal interactiva (`bash`/`sh`) |
+| <kbd>F5</kbd> | <kbd>r</kbd> o <kbd>5</kbd> | **Restart:** Reiniciar contenedor seleccionado |
+| <kbd>F6</kbd> | <kbd>s</kbd> o <kbd>6</kbd> | **Stop / Start:** Detener contenedor activo o iniciar contenedor detenido |
+| <kbd>F7</kbd> | <kbd>p</kbd> o <kbd>7</kbd> | **Pausar / Reanudar:** Pausar o reanudar procesos del contenedor |
+| <kbd>F8</kbd> | <kbd>x</kbd> o <kbd>8</kbd> | **Borrar:** Eliminar contenedor (con confirmación `y` o forzar con `f`) |
+| <kbd>F9</kbd> | <kbd>i</kbd> o <kbd>9</kbd> | **Inspect:** Inspeccionar configuración completa en JSON |
+| <kbd>F10</kbd> | <kbd>q</kbd> o <kbd>0</kbd> o <kbd>Esc</kbd> | **Salir:** Cerrar Dockeretior y regresar al bash / SSH |
+| <kbd>↑</kbd> / <kbd>↓</kbd> | <kbd>k</kbd> / <kbd>j</kbd> | **Navegación:** Desplazar cursor sobre los contenedores y actualizar ventanas |
+| <kbd>c</kbd> | | **Compose:** Explorar proyectos Docker Compose en el directorio actual |
 
 ---
 
@@ -100,38 +108,38 @@ go install github.com/mario-ezquerro/dockeretior/cmd/dockeretior@latest
 
 ## 💻 Modo de Uso
 
-### 1. Inicio como Supervisor Residente (Por defecto)
-Simplemente escribe en tu terminal:
+### 1. Panel de Control Directo (Por defecto)
+Simplemente escribe en tu terminal o sesión SSH:
 
 ```bash
 dockeretior
 ```
 
-A partir de ese momento, tu sesión habitual de `bash` o `zsh` continuará funcionando normalmente. Pulsa `Ctrl + Alt + Espacio` cuando desees desplegar el panel.
+Se abrirá inmediatamente la pantalla dividida (*split view*) mostrando todos los contenedores en ejecución en el margen izquierdo y las 4 ventanas ASCII con las cargas de CPU, memoria, red y resto de usos en el margen derecho, con la botonera de funciones F1 - F10 en la parte inferior.
 
-### 2. Modo TUI Directo (Sin proxy PTY)
-Si deseas abrir únicamente el panel gráfico de una sola vez:
+### 2. Modo Supervisor Latente en Segundo Plano (*Hot-Toggle*)
+Si deseas que Dockeretior permanezca invisible en segundo plano dentro de tu shell y se active únicamente al pulsar la combinación de teclas (`Ctrl+\` o `Ctrl+Alt+Espacio`):
 
 ```bash
-dockeretior --tui
+dockeretior --supervisor
 ```
 
 ---
 
 ## 🌐 Integración Permanente por SSH
 
-Para que **Dockeretior** proteja y supervise automáticamente cada una de tus conexiones SSH:
+Para que **Dockeretior** esté disponible como supervisor transparente en cada una de tus sesiones remotas SSH:
 
 Añade las siguientes líneas al final de tu archivo `~/.zprofile`, `~/.bash_profile` o `~/.bashrc`:
 
 ```bash
 if [ -z "$DOCKERETIOR_ACTIVE" ] && [ -t 1 ]; then
     export DOCKERETIOR_ACTIVE=1
-    exec /usr/local/bin/dockeretior
+    exec /usr/local/bin/dockeretior --supervisor
 fi
 ```
 
-Al conectar por SSH a tu servidor, el supervisor arrancará en milisegundos de forma imperceptible y tendrás el panel disponible con `Ctrl + Alt + Espacio` en todo momento.
+Al conectar por SSH a tu servidor, tu shell funcionará con total normalidad y podrás abrir Dockeretior al instante con `Ctrl + \` o `Ctrl + Alt + Espacio`. También podrás ejecutar `dockeretior` en cualquier momento para abrir el panel directamente.
 
 ---
 

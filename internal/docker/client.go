@@ -88,9 +88,9 @@ func NewClient() (*Client, error) {
 	return &Client{cli: cli}, nil
 }
 
-// ListContainers returns all containers (both running and stopped).
-func (c *Client) ListContainers(ctx context.Context) ([]types.Container, error) {
-	return c.cli.ContainerList(ctx, container.ListOptions{All: true})
+// ListContainers returns containers (either running only or all if all is true).
+func (c *Client) ListContainers(ctx context.Context, all bool) ([]types.Container, error) {
+	return c.cli.ContainerList(ctx, container.ListOptions{All: all})
 }
 
 // RestartContainer restarts a container by its ID or name.
